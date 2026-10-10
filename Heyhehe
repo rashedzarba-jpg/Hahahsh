@@ -1,7 +1,6 @@
 -- ============================================================================
--- Ash Client Integrated Hub (ESP, Silent Aim, UI, Water Walk, Infinite Soru)
+-- Ash Client Integrated Hub (ESP, Silent Aim, UI, Working Water Walk, Soru)
 -- All Sources Are Public & Free - https://discord.gg/cSthtkp5dD
--- Revamped & Compact CentuDox v3 Aesthetic
 -- ============================================================================
 
 local Players = game:GetService("Players")
@@ -614,7 +613,7 @@ spawn(function()
     end
 end)
 
-if not isNotValidCondition() then
+if not isNotValidValidCondition and not isNotValidCondition() then
     if MouseModule and typeof(MouseModule) == "Instance" then
         local ok2, Mouse = pcall(require, MouseModule)
         if not ok2 or type(Mouse) ~= "table" then Mouse = nil end
@@ -689,12 +688,12 @@ LocalPlayer.CharacterAdded:Connect(onCharacterAdded)
 if LocalPlayer.Character then onCharacterAdded(LocalPlayer.Character) end
 
 -- ==========================================
--- 3. INFINITE SORU & WATER WALK LOGIC
+-- 3. INFINITE SORU & WORKING WATER WALK
 -- ==========================================
 
 _G.infiniteSoruEnabled = false
 local waterWalkEnabled = false
-local waterWalkThread = nil
+local waterWalkConnection = nil
 
 local function setupInfiniteSoru()
     if not _G.infiniteSoruEnabled then return end
@@ -723,47 +722,25 @@ task.spawn(function()
     end
 end)
 
--- Adapted Water Walk Logic (Fixed for standalone execution)
-local function ToggleWalkInWater(water)
-    waterWalkEnabled = water
+-- Robust Working Water Walk (CFrame Surface Float)
+local function ToggleWalkInWater(state)
+    waterWalkEnabled = state
+    if waterWalkConnection then
+        waterWalkConnection:Disconnect()
+        waterWalkConnection = nil
+    end
 
-    if water then
-        if waterWalkThread then
-            task.cancel(waterWalkThread)
-            waterWalkThread = nil
-        end
+    if waterWalkEnabled then
+        waterWalkConnection = RunService.Heartbeat:Connect(function()
+            local char = LocalPlayer.Character
+            if not char then return end
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if not hrp or not hum then return end
 
-        waterWalkThread = task.spawn(function()
-            local map2 = workspace:FindFirstChild("Map") or workspace:WaitForChild("Map", 5)
-
-            if map2 then
-                map2 = map2:FindFirstChild("WaterBase-Plane") or map2:WaitForChild("WaterBase-Plane", 5)
-            end
-
-            while waterWalkEnabled do
-                if map2 then
-                    map2.Size = Vector3.new(1000, 113, 1000)
-                end
-
-                task.wait(0.5)
-            end
-
-            if map2 then
-                map2.Size = Vector3.new(1000, 80, 1000)
-            end
-        end)
-    else
-        if waterWalkThread then
-            task.cancel(waterWalkThread)
-            waterWalkThread = nil
-        end
-        pcall(function()
-            local map2 = workspace:FindFirstChild("Map")
-            if map2 then
-                local waterPlane = map2:FindFirstChild("WaterBase-Plane")
-                if waterPlane then
-                    waterPlane.Size = Vector3.new(1000, 80, 1000)
-                end
+            -- Blox Fruits general sea/water level sits around Y = 4 to 15 depending on the island
+            if hrp.Position.Y < 18 then
+                hrp.Velocity = Vector3.new(hrp.Velocity.X, math.max(hrp.Velocity.Y, 2), hrp.Velocity.Z)
             end
         end)
     end
@@ -798,7 +775,7 @@ local function ApplyStyle(obj, radius)
     corner.Parent = obj
 end
 
--- Compact Main Window Frame (Reduced size)
+-- Compact Main Window Frame
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.Size = UDim2.new(0, 460, 0, 270)
@@ -1101,4 +1078,4 @@ end
 EnableDrag(MainFrame)
 EnableDrag(MiniIcon)
 
-print("Ash Client Hub (Compact CentuDox v3) Successfully Loaded!")
+print("Ash Client Hub (Working Water Walk) Successfully Loaded!")
