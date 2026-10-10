@@ -11,6 +11,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
+-- Local settings table for movement modifiers
+local tbl = {
+    WalkSpeed = 16,
+    JumpPower = 50
+}
+
 -- ==========================================
 -- 1. ESP CONFIGURATION & MODULE
 -- ==========================================
@@ -682,6 +688,14 @@ local function onCharacterAdded(char)
     table.insert(characterConnections, char.ChildRemoved:Connect(function(child)
         if child == currentTool then currentTool = nil end
     end))
+
+    -- Re-apply WalkSpeed & JumpPower on character spawn
+    task.wait(0.1)
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum.WalkSpeed = tbl.WalkSpeed
+        hum.JumpPower = tbl.JumpPower
+    end
 end
 
 LocalPlayer.CharacterAdded:Connect(onCharacterAdded)
@@ -738,7 +752,6 @@ local function ToggleWalkInWater(state)
             local hum = char:FindFirstChildOfClass("Humanoid")
             if not hrp or not hum then return end
 
-            -- Blox Fruits general sea/water level sits around Y = 4 to 15 depending on the island
             if hrp.Position.Y < 18 then
                 hrp.Velocity = Vector3.new(hrp.Velocity.X, math.max(hrp.Velocity.Y, 2), hrp.Velocity.Z)
             end
@@ -747,7 +760,33 @@ local function ToggleWalkInWater(state)
 end
 
 -- ==========================================
--- 4. COMPACT CENTUDOX V3 UI INTEGRATION
+-- 4. MOVEMENT HANDLERS (WalkSpeed & JumpPower)
+-- ==========================================
+
+local function SetWalkSpeed(value)
+    tbl.WalkSpeed = value
+    local char = LocalPlayer.Character
+    if char then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum.WalkSpeed = value
+        end
+    end
+end
+
+local function SetJumpPower(value)
+    tbl.JumpPower = value
+    local char = LocalPlayer.Character
+    if char then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum.JumpPower = value
+        end
+    end
+end
+
+-- ==========================================
+-- 5. COMPACT CENTUDOX V3 UI INTEGRATION
 -- ==========================================
 
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
@@ -883,7 +922,7 @@ local function createTabPage(name)
     page.Size = UDim2.new(1, 0, 1, 0)
     page.BackgroundTransparency = 1
     page.BorderSizePixel = 0
-    page.CanvasSize = UDim2.new(0, 0, 0, 220)
+    page.CanvasSize = UDim2.new(0, 0, 0, 260)
     page.ScrollBarThickness = 2
     page.Visible = false
     page.Parent = ContentArea
@@ -989,6 +1028,69 @@ local function makeButton(parent, text, callback)
     return b
 end
 
+local function makeSlider(parent, text, min, max, default, callback)
+    local container = Instance.new("Frame")
+    container.Size = UDim2.new(0, 155, 0, 42)
+    container.BackgroundColor3 = PanelColor
+    container.Parent = parent
+    ApplyStyle(container, 5)
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 0, 18)
+    label.BackgroundTransparency = 1
+    label.Font = Enum.Font.GothamBold
+    label.Text = text .. ": " .. default
+    label.TextColor3 = Color3.fromRGB(200, 200, 205)
+    label.TextSize = 10
+    label.Parent = container
+
+    local sliderBar = Instance.new("TextButton")
+    sliderBar.Size = UDim2.new(1, -12, 0, 10)
+    sliderBar.Position = UDim2.new(0, 6, 0, 24)
+    sliderBar.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+    sliderBar.Text = ""
+    sliderBar.AutoButtonColor = false
+    sliderBar.Parent = container
+    ApplyStyle(sliderBar, 3)
+
+    local fill = Instance.new("Frame")
+    fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
+    fill.BackgroundColor3 = ThemeColor
+    fill.BorderSizePixel = 0
+    fill.Parent = sliderBar
+    ApplyStyle(fill, 3)
+
+    local dragging = false
+    local function update(input)
+        local pos = math.clamp((input.Position.X - sliderBar.AbsolutePosition.X) / sliderBar.AbsoluteSize.X, 0, 1)
+        local val = math.floor(min + (max - min) * pos)
+        fill.Size = UDim2.new(pos, 0, 1, 0)
+        label.Text = text .. ": " .. val
+        callback(val)
+    end
+
+    sliderBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            update(input)
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            update(input)
+        end
+    end)
+
+    return container
+end
+
 -- Populate Combat Tab
 makeToggle(pages.Combat, "Silent Aim", function(state)
     SilentAimPlayersEnabled = state
@@ -1040,6 +1142,14 @@ makeToggle(pages.Visuals, "Spectate Target", function(state)
     end
 end)
 
+makeSlider(pages.Visuals, "Walk Speed", 16, 300, 16, function(val)
+    SetWalkSpeed(val)
+end)
+
+makeSlider(pages.Visuals, "Jump Power", 50, 300, 50, function(val)
+    SetJumpPower(val)
+end)
+
 -- Populate Settings Tab
 makeToggle(pages.Settings, "Fruit Transform", function(state)
     getgenv().FruitTransform = state
@@ -1078,4 +1188,4 @@ end
 EnableDrag(MainFrame)
 EnableDrag(MiniIcon)
 
-print("Ash Client Hub (Working Water Walk) Successfully Loaded!")
+print("Ash Client Hub (Movement Sliders & Water Walk) Successfully Loaded!")
