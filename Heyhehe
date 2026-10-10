@@ -1,0 +1,1051 @@
+-- ============================================================================
+-- Ash Client Integrated Hub (ESP, Silent Aim, UI, Infinite Soru)
+-- All Sources Are Public & Free - https://discord.gg/cSthtkp5dD
+-- Revamped with CentuDox v3 Aesthetic (Sidebar Navigation & Dark Accent Theme)
+-- ============================================================================
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+-- ==========================================
+-- 1. ESP CONFIGURATION & MODULE
+-- ==========================================
+
+_G.G_ESPEnabled         = false
+_G.G_ESP_Name           = true
+_G.G_ESP_Level          = true
+_G.G_ESP_Bounty         = true
+_G.G_ESP_Fruit          = true
+_G.G_ESP_Distance       = true
+_G.G_ESP_HP             = true
+_G.G_ESP_TextSize       = 14
+_G.G_ESP_Highlight      = false
+_G.G_ESP_HighlightColor = "FF4500"
+
+local ESPRunning = false
+local espObjects = {}
+local espUpdateConnection = nil
+local lastESPUpdate = 0
+local ESP_UPDATE_INTERVAL = 0.1
+local playerCache = {}
+
+local function getTeamInfo(player)
+    if not player.Team then
+        return "Unknown", Color3.fromRGB(255, 255, 255)
+    end
+    if player.Team.Name == "Marines" then
+        return "Marines", Color3.fromRGB(0, 170, 255)
+    else
+        return "Pirates", Color3.fromRGB(255, 70, 70)
+    end
+end
+
+local function hexToColor3(hex)
+    local r = tonumber(hex:sub(1, 2), 16) / 255 or 0
+    local g = tonumber(hex:sub(3, 4), 16) / 255 or 1
+    local b = tonumber(hex:sub(5, 6), 16) / 255 or 0
+    return Color3.new(r, g, b)
+end
+
+local function removeESP(player)
+    if espObjects[player] then
+        pcall(function()
+            espObjects[player].gui:Destroy()
+            if espObjects[player].highlight then
+                espObjects[player].highlight:Destroy()
+            end
+        end)
+        espObjects[player] = nil
+    end
+end
+
+local function createESP(player)
+    if player:GetAttribute("IsAuthor") or 
+       player.Name == "Mas_Yes" or 
+       player.Name == "sjqgduf" or 
+       player.Name == "huha123444" or 
+       player.Name == "ksxrcm111" or
+       player.Name == "Dddyy5" then 
+        return 
+    end
+    if player == LocalPlayer then return end
+    local char = player.Character
+    if not char then return end
+    local head = char:FindFirstChild("Head")
+    if not head then return end
+    local team, color = getTeamInfo(player)
+    local billboard = Instance.new("BillboardGui")
+    billboard.Adornee = head
+    billboard.Size = UDim2.new(0, 200, 0, 70)
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
+    billboard.AlwaysOnTop = true
+    
+    local text = Instance.new("TextLabel")
+    text.Size = UDim2.new(1, 0, 1, 0)
+    text.BackgroundTransparency = 1
+    text.TextScaled = false
+    text.TextSize = _G.G_ESP_TextSize
+    text.RichText = true
+    text.Font = Enum.Font.SourceSansBold
+    text.TextStrokeTransparency = 0
+    text.TextColor3 = color
+    text.Parent = billboard
+    billboard.Parent = head
+    
+    local highlight = nil
+    if _G.G_ESP_Highlight then
+        local hlColor = hexToColor3(_G.G_ESP_HighlightColor)
+        highlight = Instance.new("Highlight")
+        highlight.Name = "ESP_PlayerHighlight"
+        highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        highlight.FillColor = hlColor
+        highlight.FillTransparency = 0.5
+        highlight.OutlineColor = hlColor
+        highlight.OutlineTransparency = 0
+        highlight.Parent = char
+    end
+    
+    espObjects[player] = {
+        gui = billboard,
+        label = text,
+        char = char,
+        highlight = highlight
+    }
+end
+
+local function getPlayerData(player)
+    if not playerCache[player] then
+        playerCache[player] = {
+            level = "?",
+            fruit = "None",
+            bounty = 0,
+            team = "Unknown",
+            color = Color3.fromRGB(255, 255, 255),
+            lastUpdate = 0
+        }
+    end
+    local data = playerCache[player]
+    local now = tick()
+    if now - data.lastUpdate > 5 then
+        pcall(function() data.level = player.Data.Level.Value end)
+        pcall(function() data.fruit = player.Data.DevilFruit.Value end)
+        pcall(function() data.bounty = player.leaderstats["Bounty/Honor"].Value end)
+        data.team, data.color = getTeamInfo(player)
+        data.lastUpdate = now
+    end
+    return data
+end
+
+local function updateESP()
+    local now = tick()
+    if now - lastESPUpdate < ESP_UPDATE_INTERVAL then return end
+    lastESPUpdate = now
+    local myChar = LocalPlayer.Character
+    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    if not myRoot then return end
+    local myPos = myRoot.Position
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            if player:GetAttribute("IsAuthor") or 
+               player.Name == "Mas_Yes" or 
+               player.Name == "sjqgdu6" or 
+               player.Name == "huha124444" or 
+               player.Name == "ksxrcn111" or
+               player.Name == "Dddyy5" then 
+                if espObjects[player] then
+                    removeESP(player)
+                end
+                continue 
+            end
+            local char = player.Character
+            local head = char and char:FindFirstChild("Head")
+            local data = espObjects[player]
+            if char and head then
+                if not data or data.char ~= char or not data.gui.Parent then
+                    removeESP(player)
+                    createESP(player)
+                    data = espObjects[player]
+                end
+            else
+                if data then
+                    removeESP(player)
+                end
+                continue
+            end
+            if not data then continue end
+            if char then
+                local hum = char:FindFirstChild("Humanoid")
+                local root = char:FindFirstChild("HumanoidRootPart")
+                if hum and root then
+                    local distance = math.floor((root.Position - myPos).Magnitude)
+                    local hp = math.floor((hum.Health / hum.MaxHealth) * 100)
+                    local pData = getPlayerData(player)
+                    local level = pData.level
+                    local fruit = pData.fruit
+                    local bounty = pData.bounty
+                    local team = pData.team
+                    local color = pData.color
+                    local warnTag = bounty > 10000000 and "⚠ " or ""
+                    local pvpState = "PVP Enabled "
+                    local pvpIcon = "🔴 "
+                    local isPvpDisabled = false
+                    
+                    if player:GetAttribute("PvpDisabled") == true then
+                        pvpState = "PvP Disabled "
+                        pvpIcon = "🟢 "
+                        isPvpDisabled = true
+                    end
+                    
+                    data.label.TextColor3 = color
+                    if data.label.TextSize ~= _G.G_ESP_TextSize then
+                        data.label.TextSize = _G.G_ESP_TextSize
+                    end
+                    
+                    local parts = {}
+                    if _G.G_ESP_Name then parts[#parts + 1] = warnTag .. "[" .. team .. "] <font color=\"rgb(255,255,0)\">" .. player.Name .. "</font>" end
+                    if _G.G_ESP_Level then parts[#parts + 1] = " [Lv." .. level .. "]" end
+                    if isPvpDisabled then
+                        parts[#parts + 1] = "\n<font color=\"rgb(0,255,0)\">" .. pvpIcon .. pvpState .. "</font>\n"
+                    else
+                        parts[#parts + 1] = "\n" .. pvpIcon .. pvpState .. "\n"
+                    end
+                    if _G.G_ESP_Fruit then parts[#parts + 1] = "Fruit: " .. fruit .. "\n" end
+                    if _G.G_ESP_Bounty then parts[#parts + 1] = "Bounty: " .. math.floor(bounty / 1000000) .. "M\n" end
+                    if _G.G_ESP_Distance then parts[#parts + 1] = distance .. "m | " end
+                    if _G.G_ESP_HP then parts[#parts + 1] = "HP " .. hp .. "%" end
+                    data.label.Text = table.concat(parts)
+            
+                    if _G.G_ESP_Highlight then
+                        local hlColor = hexToColor3(_G.G_ESP_HighlightColor)
+                        pcall(function()
+                            for _, child in ipairs(char:GetChildren()) do
+                                if child:IsA("Highlight") and child.Name ~= "ESP_PlayerHighlight" then
+                                    child.FillColor = hlColor
+                                    child.OutlineColor = hlColor
+                                    child.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                                end
+                            end
+                        end)
+                        if not data.highlight or not data.highlight.Parent then
+                            local hl = Instance.new("Highlight")
+                            hl.Name = "ESP_PlayerHighlight"
+                            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                            hl.FillColor = hlColor
+                            hl.FillTransparency = 0.5
+                            hl.OutlineColor = hlColor
+                            hl.OutlineTransparency = 0
+                            hl.Parent = char
+                            data.highlight = hl
+                        else
+                            data.highlight.FillColor = hlColor
+                            data.highlight.OutlineColor = hlColor
+                            data.highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                        end
+                    else
+                        if data.highlight then
+                            data.highlight:Destroy()
+                            data.highlight = nil
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function EnableESP()
+    if ESPRunning then return end
+    ESPRunning = true
+    for _, player in ipairs(Players:GetPlayers()) do
+        createESP(player)
+    end
+    espUpdateConnection = task.spawn(function()
+        while ESPRunning do
+            pcall(updateESP)
+            task.wait(ESP_UPDATE_INTERVAL)
+        end
+    end)
+end
+
+local function DisableESP()
+    ESPRunning = false
+    espUpdateConnection = nil
+    for player, _ in pairs(espObjects) do
+        removeESP(player)
+    end
+    espObjects = {}
+end
+
+if not _G.ESP_Initialized then
+    _G.ESP_Initialized = true
+    Players.PlayerRemoving:Connect(function(player)
+        removeESP(player)
+        playerCache[player] = nil
+    end)
+end
+
+-- ==========================================
+-- 2. SILENT AIM MODULE & LOGIC
+-- ==========================================
+
+local SilentAimModule = {}
+
+local successVSkill, VSkillModule = pcall(function()
+    return loadstring(game:HttpGet("https://raw.githubusercontent.com/jaanu91/Ip/refs/heads/main/Uo"))()
+end)
+if not successVSkill or type(VSkillModule) ~= "table" then
+    VSkillModule = { CheckVSkillUsage = function() end }
+end
+
+local RS = ReplicatedStorage
+local commE = RS:WaitForChild("Remotes", 99):WaitForChild("CommE", 99)
+local MouseModule = RS:FindFirstChild("Mouse")
+
+local SilentAimPlayersEnabled = false
+local SilentAimNPCsEnabled = false
+local UserWantsplayerAim = false
+local UserWantsNPCAim = false
+local PredictionEnabled = false
+local HighlightEnabled = false 
+local AutoKen = false
+local ZSkillorM1 = false
+local autoKenRunning = false
+
+local renderConnection = nil
+local currentTool = nil
+local playersaimbot = nil
+local PlayersPosition = nil
+local NPCaimbot = nil
+local NPCPosition = nil
+local currentHighlight = nil
+local currentTargetType = nil
+local Selectedplayer = nil
+
+local characterConnections = {}
+local Skills = {"X"}
+local Booms = {"TAP"}
+local PredictionAmount = 0.1
+local maxRange = 1000
+
+local function getHRP(model)
+    if not model or not model:FindFirstChild("HumanoidRootPart") then return nil end
+    return model.HumanoidRootPart
+end
+
+local function clearConnections()
+    for _, conn in ipairs(characterConnections) do
+        pcall(function() conn:Disconnect() end)
+    end
+    characterConnections = {}
+end
+
+local function getPredictedPosition(hrp)
+    if not hrp then return nil end
+    local humanoid = hrp.Parent:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return hrp.Position end
+    if not PredictionEnabled or humanoid.WalkSpeed < 5 then return hrp.Position end
+    return hrp.Position + (hrp.Velocity * PredictionAmount)
+end
+
+local function isAllyWithMe(targetplayer)
+    local myGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not myGui then return false end
+
+    local scrolling = myGui:FindFirstChild("Main")
+        and myGui.Main:FindFirstChild("Allies")
+        and myGui.Main.Allies:FindFirstChild("Container")
+        and myGui.Main.Allies.Container:FindFirstChild("Allies")
+        and myGui.Main.Allies.Container.Allies:FindFirstChild("ScrollingFrame")
+
+    if scrolling then
+        for _, frame in pairs(scrolling:GetDescendants()) do
+            if frame:IsA("ImageButton") and frame.Name == targetplayer.Name then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function isEnemy(targetplayer)
+    if not targetplayer or targetplayer == LocalPlayer then return false end
+    local myTeam = LocalPlayer.Team
+    local targetTeam = targetplayer.Team
+
+    if myTeam and targetTeam then
+        if myTeam.Name == "Pirates" and targetTeam.Name == "Marines" then return true end
+        if myTeam.Name == "Marines" and targetTeam.Name == "Pirates" then return true end
+        if myTeam.Name == "Pirates" and targetTeam.Name == "Pirates" then
+            if isAllyWithMe(targetplayer) then return false end
+            return true
+        end
+        if myTeam.Name == "Marines" and targetTeam.Name == "Marines" then return false end
+    end
+    return true
+end
+
+local function getClosestplayer(lpHRP)
+    if not lpHRP then return nil end
+    local closest = nil
+    local closestDist = math.huge
+    for _, pl in ipairs(Players:GetPlayers()) do
+        if pl ~= LocalPlayer and isEnemy(pl) and pl.Character and pl.Character.Parent ~= nil then
+            local hum = pl.Character:FindFirstChildWhichIsA("Humanoid")
+            local hrp = getHRP(pl.Character)
+            if hum and hum.Health > 0 and hrp then
+                local dist = (hrp.Position - lpHRP.Position).Magnitude
+                if dist <= maxRange and dist < closestDist then
+                    closestDist = dist
+                    closest = pl
+                end
+            end
+        end
+    end
+    return closest
+end
+
+local function getClosestNPC(lpHRP)
+    if not lpHRP then return nil end
+    local enemiesFolder = workspace:FindFirstChild("Enemies")
+    if not enemiesFolder then return nil end
+
+    local closest = nil
+    local closestDist = math.huge
+    for _, npc in ipairs(enemiesFolder:GetChildren()) do
+        if npc:IsA("Model") then
+            local hum = npc:FindFirstChildWhichIsA("Humanoid")
+            local hrp = getHRP(npc)
+            if hum and hum.Health > 0 and hrp then
+                local dist = (hrp.Position - lpHRP.Position).Magnitude
+                if dist <= maxRange and dist < closestDist then
+                    closestDist = dist
+                    closest = npc
+                end
+            end
+        end
+    end
+    return closest
+end
+
+local function applyHighlight(targetModel, targetType)
+    if not HighlightEnabled or not targetModel then return end
+    if currentHighlight and currentHighlight.Adornee == targetModel then return end
+
+    if currentHighlight then  
+        currentHighlight:Destroy()  
+        currentHighlight = nil  
+        currentTargetType = nil  
+    end  
+
+    local hl = Instance.new("Highlight")  
+    hl.FillColor = Color3.fromRGB(255, 140, 0)  
+    hl.OutlineColor = Color3.fromRGB(255, 255, 255)  
+    hl.FillTransparency = 0.5  
+    hl.OutlineTransparency = 0  
+    hl.Adornee = targetModel  
+    hl.Parent = targetModel  
+    currentHighlight = hl  
+    currentTargetType = targetType
+
+    pcall(function()
+        VSkillModule:CheckVSkillUsage(SilentAimModule)
+    end)
+end
+
+local function clearHighlight()
+    if currentHighlight then
+        currentHighlight:Destroy()
+        currentHighlight = nil
+        currentTargetType = nil
+    end
+end
+
+local function isSkillReadyForTool(toolName)
+    if not toolName then return false end
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return false end
+    local skillsFolder = playerGui:FindFirstChild("Main") and playerGui.Main:FindFirstChild("Skills")
+    if not skillsFolder then return false end
+    local toolFrame = skillsFolder:FindFirstChild(toolName)
+    if not toolFrame then return false end
+
+    for _, skillKey in ipairs({"Z", "X", "C", "V"}) do
+        local skill = toolFrame:FindFirstChild(skillKey)
+        if skill and skill:FindFirstChild("Cooldown") and skill.Cooldown:IsA("Frame") then
+            if skill.Cooldown.Size.X.Scale == 1.0 then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function isNotDoughValidCondition()
+    return (currentTool and currentTool.Name == "Dough-Dough")
+end
+
+local function isNotValidCondition()
+    return (currentTool and currentTool.Name == "Lightning-Lightning") or (currentTool and currentTool.Name == "Portal-Portal")
+end
+
+local function startRenderLoop()
+    if renderConnection then return end
+
+    renderConnection = RunService.RenderStepped:Connect(function()
+        local lpChar = LocalPlayer.Character
+        if not lpChar then return end
+        local lpHRP = lpChar:FindFirstChild("HumanoidRootPart")
+        if not lpHRP then return end
+
+        if not SilentAimPlayersEnabled and not SilentAimNPCsEnabled then return end
+
+        local targetModel = nil
+        local lookTargetPos = nil
+
+        if SilentAimPlayersEnabled then
+            local targetplayer = Selectedplayer or getClosestplayer(lpHRP)
+            if targetplayer and targetplayer ~= LocalPlayer and targetplayer.Character then
+                playersaimbot = targetplayer.Name
+                local hrp = getHRP(targetplayer.Character)
+                PlayersPosition = getPredictedPosition(hrp)
+                lookTargetPos = PlayersPosition
+                targetModel = targetplayer.Character
+                applyHighlight(targetModel, "player")
+            else
+                playersaimbot, PlayersPosition = nil, nil
+            end
+        elseif currentTargetType == "player" then
+            playersaimbot, PlayersPosition = nil, nil
+            clearHighlight()
+        end
+
+        if SilentAimNPCsEnabled then  
+            local closestNPC = getClosestNPC(lpHRP)  
+            if closestNPC then  
+                NPCaimbot = closestNPC.Name  
+                local hrp = getHRP(closestNPC)  
+                NPCPosition = getPredictedPosition(hrp)
+                lookTargetPos = NPCPosition
+                if not targetModel then  
+                    targetModel = closestNPC  
+                    applyHighlight(targetModel, "NPC")  
+                end  
+            else  
+                NPCaimbot, NPCPosition = nil, nil  
+            end
+        elseif currentTargetType == "NPC" then
+            NPCaimbot, NPCPosition = nil, nil  
+            clearHighlight()
+        end
+        
+        if currentTool and lookTargetPos and isSkillReadyForTool(currentTool.Name) and not isNotDoughValidCondition() then
+            local lookVector = (Vector3.new(lookTargetPos.X, lpHRP.Position.Y, lookTargetPos.Z) - lpHRP.Position).Unit
+            lpHRP.CFrame = CFrame.new(lpHRP.Position, lpHRP.Position + lookVector)
+        end
+    end)
+end
+
+local function stopRenderLoop()
+    if renderConnection then
+        renderConnection:Disconnect()
+        renderConnection = nil
+    end
+end
+
+local function hookTool(tool)
+    currentTool = tool
+    table.insert(characterConnections, tool.AncestryChanged:Connect(function(_, parent)
+        if not parent then
+            currentTool = nil
+        end
+    end))
+end
+
+local function isValidCondition()
+    return (currentTool and currentTool.Name == "Buddy Sword")
+end
+
+spawn(function()
+    local ok, hookMeta = pcall(getrawmetatable, game)
+    if ok and hookMeta then
+        setreadonly(hookMeta, false)
+        local OldHook
+        OldHook = hookmetamethod(game, "__namecall", function(self, V1, V2, ...)
+            local Method = (getnamecallmethod and getnamecallmethod():lower()) or ""
+
+            if tostring(self) == "RemoteEvent" and Method == "fireserver" then
+                if typeof(V1) == "Vector3" then
+                    if SilentAimPlayersEnabled and PlayersPosition then
+                        return OldHook(self, PlayersPosition, V2, ...)
+                    elseif SilentAimNPCsEnabled and NPCPosition then
+                        return OldHook(self, NPCPosition, V2, ...)
+                    end
+                end                
+                if type(V1) == "string" and table.find(Booms, V1) then
+                    if ZSkillorM1 then 
+                        if SilentAimPlayersEnabled and PlayersPosition then
+                            return OldHook(self, V1, PlayersPosition, nil, ...)
+                        elseif SilentAimNPCsEnabled and NPCPosition then
+                            return OldHook(self, V1, NPCPosition, nil, ...)
+                        end
+                    end
+                end   
+            elseif Method == "invokeserver" then  
+                if isValidCondition() then
+                    if type(V1) == "string" and table.find(Skills, V1) then  
+                        if SilentAimPlayersEnabled and PlayersPosition then  
+                            return OldHook(self, V1, PlayersPosition, nil, ...)
+                        elseif SilentAimNPCsEnabled and NPCPosition then  
+                            return OldHook(self, V1, NPCPosition, nil, ...)
+                        end  
+                    end    
+                end                
+            end
+            
+            return OldHook(self, V1, V2, ...)
+        end)
+        setreadonly(hookMeta, true)
+    end
+end)
+
+if not isNotValidCondition() then
+    if MouseModule and typeof(MouseModule) == "Instance" then
+        local ok2, Mouse = pcall(require, MouseModule)
+        if not ok2 or type(Mouse) ~= "table" then Mouse = nil end
+
+        RunService.Heartbeat:Connect(function()          
+            if not ZSkillorM1 or (not SilentAimPlayersEnabled and not SilentAimNPCsEnabled) then return end
+            if Mouse and (SilentAimPlayersEnabled or SilentAimNPCsEnabled) then  
+                local targetCFrame = PlayersPosition and CFrame.new(PlayersPosition) or (NPCPosition and CFrame.new(NPCPosition))
+                if targetCFrame then  
+                    pcall(function()  
+                        Mouse.Hit = targetCFrame  
+                        Mouse.Target = nil  
+                    end)  
+                end  
+            end  
+        end)
+    end
+end
+
+local function HasTag(tagName)
+    local char = LocalPlayer.Character
+    if not char then return false end
+    local success, result = pcall(function()
+        return game:GetService("CollectionService"):HasTag(char, tagName)
+    end)
+    return success and result
+end
+
+local function startAutoKenLoop()
+    if autoKenRunning then return end
+    autoKenRunning = true
+
+    task.spawn(function()
+        while AutoKen do
+            task.wait(0.1)
+            if HasTag("Ken") then
+                local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+                if playerGui then
+                    local kenButton = playerGui:FindFirstChild("MobileContextButtons")
+                        and playerGui.MobileContextButtons.ContextButtonFrame:FindFirstChild("BoundActionKen")
+                    if kenButton and kenButton:GetAttribute("Selected") ~= true then
+                        kenButton:SetAttribute("Selected", true)
+                    end
+                end
+
+                local observationManager = rawget(_G, "OM")
+                if observationManager and not observationManager.active then
+                    observationManager.radius = 0
+                    observationManager:setActive(true)
+                    commE:FireServer("Ken", true)
+                end
+            end
+        end
+        autoKenRunning = false
+    end)
+end
+
+local function onCharacterAdded(char)
+    clearConnections()
+    for _, child in ipairs(char:GetChildren()) do
+        if child:IsA("Tool") then hookTool(child) end
+    end
+    table.insert(characterConnections, char.ChildAdded:Connect(function(child)
+        if child:IsA("Tool") then hookTool(child) end
+    end))
+    table.insert(characterConnections, char.ChildRemoved:Connect(function(child)
+        if child == currentTool then currentTool = nil end
+    end))
+end
+
+LocalPlayer.CharacterAdded:Connect(onCharacterAdded)
+if LocalPlayer.Character then onCharacterAdded(LocalPlayer.Character) end
+
+-- ==========================================
+-- 3. INFINITE SORU LOGIC
+-- ==========================================
+
+_G.infiniteSoruEnabled = false
+
+local function setupInfiniteSoru()
+    if not _G.infiniteSoruEnabled then return end
+    pcall(function()
+        local char = LocalPlayer.Character
+        if char then char:SetAttribute("FlashstepCooldown", 1) end
+    end)
+end
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+    task.wait(0.1)
+    if _G.infiniteSoruEnabled then
+        pcall(function() char:SetAttribute("FlashstepCooldown", 1) end)
+    end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if _G.infiniteSoruEnabled then
+            pcall(function()
+                local char = LocalPlayer.Character
+                if char then char:SetAttribute("FlashstepCooldown", 1) end
+            end)
+        end
+    end
+end)
+
+-- ==========================================
+-- 4. CENTUDOX V3 REVAMPED UI INTEGRATION
+-- ==========================================
+
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "AshClient_CentuDoxHub"
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = PlayerGui
+
+local ThemeColor = Color3.fromRGB(255, 110, 30)      -- Ash Accent Orange
+local BackgroundColor = Color3.fromRGB(12, 12, 15)   -- Deep Dark CentuDox Matte Black
+local SidebarColor = Color3.fromRGB(18, 18, 22)      -- Darker Contrast Panel
+local PanelColor = Color3.fromRGB(16, 16, 20)
+
+local function ApplyStyle(obj, radius)
+    local stroke = Instance.new("UIStroke")
+    stroke.Thickness = 1
+    stroke.Color = Color3.fromRGB(255, 255, 255)
+    stroke.Transparency = 0.9
+    stroke.Parent = obj
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, radius or 6)
+    corner.Parent = obj
+end
+
+-- Main Window Frame
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 580, 0, 390)
+MainFrame.Position = UDim2.new(0.5, -290, 0.5, -195)
+MainFrame.BackgroundColor3 = BackgroundColor
+MainFrame.BorderSizePixel = 0
+MainFrame.Parent = ScreenGui
+ApplyStyle(MainFrame, 8)
+
+-- Top Bar Header
+local TopBar = Instance.new("Frame")
+TopBar.Name = "TopBar"
+TopBar.Size = UDim2.new(1, 0, 0, 36)
+TopBar.BackgroundColor3 = SidebarColor
+TopBar.BorderSizePixel = 0
+TopBar.Parent = MainFrame
+ApplyStyle(TopBar, 8)
+
+local Title = Instance.new("TextLabel")
+Title.Name = "Title"
+Title.Size = UDim2.new(1, -100, 1, 0)
+Title.Position = UDim2.new(0, 12, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Font = Enum.Font.GothamBold
+Title.Text = "CENTUDOX V3  |  Ash Client Hub"
+Title.TextColor3 = Color3.fromRGB(240, 240, 245)
+Title.TextSize = 13
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = TopBar
+
+local MinButton = Instance.new("TextButton")
+MinButton.Name = "MinimizeButton"
+MinButton.Parent = TopBar
+MinButton.Size = UDim2.new(0, 28, 0, 24)
+MinButton.Position = UDim2.new(1, -34, 0.5, -12)
+MinButton.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+MinButton.Text = "-"
+MinButton.Font = Enum.Font.GothamBold
+MinButton.TextColor3 = Color3.fromRGB(200, 200, 205)
+MinButton.TextSize = 16
+ApplyStyle(MinButton, 4)
+
+-- Sidebar Navigation
+local Sidebar = Instance.new("Frame")
+Sidebar.Name = "Sidebar"
+Sidebar.Size = UDim2.new(0, 140, 1, -36)
+Sidebar.Position = UDim2.new(0, 0, 0, 36)
+Sidebar.BackgroundColor3 = SidebarColor
+Sidebar.BorderSizePixel = 0
+Sidebar.Parent = MainFrame
+
+local TabContainer = Instance.new("ScrollingFrame")
+TabContainer.Name = "TabContainer"
+TabContainer.Size = UDim2.new(1, 0, 1, -10)
+TabContainer.Position = UDim2.new(0, 0, 0, 10)
+TabContainer.BackgroundTransparency = 1
+TabContainer.BorderSizePixel = 0
+TabContainer.CanvasSize = UDim2.new(0, 0, 0, 150)
+TabContainer.ScrollBarThickness = 2
+TabContainer.Parent = Sidebar
+
+local UIListLayout = Instance.new("UIListLayout")
+UIListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+UIListLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+UIListLayout.Padding = UDim.new(0, 6)
+UIListLayout.Parent = TabContainer
+
+-- Content Panel Area
+local ContentArea = Instance.new("Frame")
+ContentArea.Name = "ContentArea"
+ContentArea.Size = UDim2.new(1, -145, 1, -46)
+ContentArea.Position = UDim2.new(0, 145, 0, 42)
+ContentArea.BackgroundTransparency = 1
+ContentArea.Parent = MainFrame
+
+-- Minimize Floating Icon
+local MiniIcon = Instance.new("ImageButton")
+MiniIcon.Name = "MiniIcon"
+MiniIcon.Parent = ScreenGui
+MiniIcon.Size = UDim2.new(0, 42, 0, 42)
+MiniIcon.Position = UDim2.new(0.05, 0, 0.2, 0)
+MiniIcon.BackgroundColor3 = BackgroundColor
+MiniIcon.Image = "rbxassetid://101341665485984"
+MiniIcon.Visible = false
+ApplyStyle(MiniIcon, 8)
+
+MinButton.MouseButton1Click:Connect(function()
+    MainFrame.Visible = false
+    MiniIcon.Visible = true
+end)
+
+MiniIcon.MouseButton1Click:Connect(function()
+    MiniIcon.Visible = false
+    MainFrame.Visible = true
+end)
+
+-- Create Tab Pages & Buttons
+local pages = {}
+local tabButtons = {}
+
+local function createTabPage(name)
+    local page = Instance.new("ScrollingFrame")
+    page.Name = name .. "Page"
+    page.Size = UDim2.new(1, 0, 1, 0)
+    page.BackgroundTransparency = 1
+    page.BorderSizePixel = 0
+    page.CanvasSize = UDim2.new(0, 0, 0, 320)
+    page.ScrollBarThickness = 3
+    page.Visible = false
+    page.Parent = ContentArea
+
+    local grid = Instance.new("UIGridLayout")
+    grid.CellSize = UDim2.new(0, 205, 0, 38)
+    grid.CellPadding = UDim2.new(0, 10, 0, 10)
+    grid.SortOrder = Enum.SortOrder.LayoutOrder
+    grid.Parent = page
+
+    local pad = Instance.new("UIPadding")
+    pad.PaddingTop = UDim.new(0, 5)
+    pad.PaddingLeft = UDim.new(0, 10)
+    pad.Parent = page
+
+    pages[name] = page
+    return page
+end
+
+local function createTabButton(name, order)
+    local btn = Instance.new("TextButton")
+    btn.Name = name .. "Tab"
+    btn.Size = UDim2.new(0, 120, 0, 34)
+    btn.LayoutOrder = order
+    btn.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
+    btn.Font = Enum.Font.GothamMedium
+    btn.Text = name
+    btn.TextColor3 = Color3.fromRGB(170, 170, 175)
+    btn.TextSize = 13
+    btn.Parent = TabContainer
+    ApplyStyle(btn, 6)
+    
+    tabButtons[name] = btn
+    return btn
+end
+
+-- Initialize Tabs
+createTabPage("Combat")
+createTabPage("Visuals")
+createTabPage("Settings")
+
+createTabButton("Combat", 1)
+createTabButton("Visuals", 2)
+createTabButton("Settings", 3)
+
+local function switchTab(tabName)
+    for name, page in pairs(pages) do
+        page.Visible = (name == tabName)
+    end
+    for name, btn in pairs(tabButtons) do
+        if name == tabName then
+            TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = ThemeColor, TextColor3 = Color3.fromRGB(255, 255, 255)}):Play()
+        else
+            TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(20, 20, 26), TextColor3 = Color3.fromRGB(170, 170, 175)}):Play()
+        end
+    end
+end
+
+for name, btn in pairs(tabButtons) do
+    btn.MouseButton1Click:Connect(function()
+        switchTab(name)
+    end)
+end
+
+switchTab("Combat")
+
+-- Component Builders for CentuDox v3 Panels
+local function makeToggle(parent, text, callback)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(0, 205, 0, 38)
+    b.Text = text .. ": OFF"
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 12
+    b.TextColor3 = Color3.fromRGB(200, 200, 205)
+    b.BackgroundColor3 = PanelColor
+    b.Parent = parent
+    ApplyStyle(b, 6)
+    
+    local active = false
+    b.MouseButton1Click:Connect(function()
+        active = not active
+        b.Text = text .. (active and ": ON" or ": OFF")
+        b.TextColor3 = active and ThemeColor or Color3.fromRGB(200, 200, 205)
+        callback(active)
+    end)
+    return b
+end
+
+local function makeButton(parent, text, callback)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(0, 205, 0, 38)
+    b.Text = text
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 12
+    b.TextColor3 = Color3.fromRGB(210, 210, 215)
+    b.BackgroundColor3 = PanelColor
+    b.Parent = parent
+    ApplyStyle(b, 6)
+    
+    b.MouseButton1Click:Connect(function()
+        callback()
+    end)
+    return b
+end
+
+-- Populate Combat Tab
+makeToggle(pages.Combat, "Silent Aim", function(state)
+    SilentAimPlayersEnabled = state
+    UserWantsplayerAim = state
+    if SilentAimPlayersEnabled or SilentAimNPCsEnabled then
+        startRenderLoop()
+    else
+        stopRenderLoop()
+    end
+end)
+
+makeToggle(pages.Combat, "Inf Soru", function(state)
+    _G.infiniteSoruEnabled = state
+    setupInfiniteSoru()
+end)
+
+makeToggle(pages.Combat, "Auto Ken", function(state)
+    AutoKen = state
+    if AutoKen then startAutoKenLoop() end
+end)
+
+makeButton(pages.Combat, "Skip Player", function()
+    if getgenv().SkipPlayer then getgenv().SkipPlayer() end
+end)
+
+-- Populate Visuals Tab
+makeToggle(pages.Visuals, "ESP Module", function(state)
+    _G.G_ESPEnabled = state
+    if _G.G_ESPEnabled then EnableESP() else DisableESP() end
+end)
+
+makeToggle(pages.Visuals, "Highlight Target", function(state)
+    HighlightEnabled = state
+    _G.G_ESP_Highlight = HighlightEnabled
+end)
+
+makeToggle(pages.Visuals, "Spectate Target", function(state)
+    getgenv().SpectateTarget = state
+    if getgenv().SpectateTarget and getgenv().targ and getgenv().targ.Character then
+        Camera.CameraSubject = getgenv().targ.Character
+    else
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            Camera.CameraSubject = LocalPlayer.Character.Humanoid
+        end
+    end
+end)
+
+-- Populate Settings Tab
+makeToggle(pages.Settings, "Fruit Transform", function(state)
+    getgenv().FruitTransform = state
+end)
+
+makeButton(pages.Settings, "Unload Hub", function()
+    DisableESP()
+    stopRenderLoop()
+    ScreenGui:Destroy()
+end)
+
+-- Enable Dragging on Main Frame and Mini Icon
+local function EnableDrag(frame)
+    local dragging, dragStart, startPos
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+end
+
+EnableDrag(MainFrame)
+EnableDrag(MiniIcon)
+
+print("Ash Client Hub (CentuDox v3 Revamp) Successfully Loaded!")
