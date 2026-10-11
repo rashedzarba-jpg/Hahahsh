@@ -920,7 +920,8 @@ local function createTabPage(name)
     page.Size = UDim2.new(1, 0, 1, 0)
     page.BackgroundTransparency = 1
     page.BorderSizePixel = 0
-    page.CanvasSize = UDim2.new(0, 0, 0, 260)
+    -- Expanded CanvasSize for Visuals tab to accommodate all items completely
+    page.CanvasSize = UDim2.new(0, 0, 0, name == "Visuals" and 380 or 260)
     page.ScrollBarThickness = 2
     page.Visible = false
     page.Parent = ContentArea
@@ -1222,4 +1223,4 @@ end
 EnableDrag(MainFrame)
 EnableDrag(MiniIcon)
 
-print("Ash Client Hub (Water Walk & Dash Distance Added) Successfully Loaded!")
+print("Ash Client Hub (Visuals Canvas Size Expanded) Successfully Loaded!")
