@@ -1,5 +1,5 @@
 -- ============================================================================
--- Ash Client Integrated Hub (ESP, Silent Aim, UI, WalkSpeed, JumpPower, Soru)
+-- Ash Client Integrated Hub (ESP, Silent Aim, UI, Fast Attack, Movement Features)
 -- All Sources Are Public & Free - https://discord.gg/cSthtkp5dD
 -- ============================================================================
 
@@ -14,7 +14,8 @@ local Camera = workspace.CurrentCamera
 -- Global settings table for values
 local tbl = {
     WalkSpeed = 16,
-    JumpPower = 50
+    JumpPower = 50,
+    FastAttackRange = 50
 }
 
 -- ==========================================
@@ -678,10 +679,18 @@ local function startAutoKenLoop()
 end
 
 -- ==========================================
--- 3. INFINITE SORU & CHARACTER STATS HANDLERS
+-- 3. MOVEMENT & COMBAT MODULES (Soru, Water/Lava Walk, Air Jump, Fast Attack)
 -- ==========================================
 
 _G.infiniteSoruEnabled = false
+local waterWalkEnabled = false
+local waterWalkConnection = nil
+local lavaWalkEnabled = false
+local lavaWalkConnection = nil
+local infiniteJumpEnabled = false
+local jumpConnection = nil
+local fastAttackEnabled = false
+local fastAttackConnection = nil
 
 local function setupInfiniteSoru()
     if not _G.infiniteSoruEnabled then return end
@@ -691,12 +700,10 @@ local function setupInfiniteSoru()
     end)
 end
 
--- WalkSpeed & JumpPower Custom Functions
 local function applyCharacterStats(char)
     if not char then return end
     local humanoid = char:WaitForChild("Humanoid", 5)
     if humanoid then
-        -- Apply WalkSpeed
         if tbl.WalkSpeed then
             humanoid.WalkSpeed = tbl.WalkSpeed
             humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
@@ -705,7 +712,6 @@ local function applyCharacterStats(char)
                 end
             end)
         end
-        -- Apply JumpPower
         if tbl.JumpPower then
             humanoid.JumpPower = tbl.JumpPower
         end
@@ -725,6 +731,106 @@ local function SetJumpPower(jumpPower)
     local char = LocalPlayer.Character
     if char and char:FindFirstChild("Humanoid") then
         char.Humanoid.JumpPower = tbl.JumpPower
+    end
+end
+
+-- Water Walk (Surface Float)
+local function ToggleWaterWalk(state)
+    waterWalkEnabled = state
+    if waterWalkConnection then waterWalkConnection:Disconnect() waterWalkConnection = nil end
+    if waterWalkEnabled then
+        waterWalkConnection = RunService.Heartbeat:Connect(function()
+            local char = LocalPlayer.Character
+            if not char then return end
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if not hrp or not hum then return end
+
+            if hrp.Position.Y < 12 and hum:GetState() ~= Enum.HumanoidStateType.Jumping then
+                hrp.Velocity = Vector3.new(hrp.Velocity.X, 0, hrp.Velocity.Z)
+                hrp.CFrame = CFrame.new(hrp.Position.X, 12.5, hrp.Position.Z) * hrp.CFrame.Rotation
+            end
+        end)
+    end
+end
+
+-- Lava Walk
+local function ToggleLavaWalk(state)
+    lavaWalkEnabled = state
+    if lavaWalkConnection then lavaWalkConnection:Disconnect() lavaWalkConnection = nil end
+    if lavaWalkEnabled then
+        lavaWalkConnection = RunService.Heartbeat:Connect(function()
+            local char = LocalPlayer.Character
+            if not char then return end
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if not hrp then return end
+
+            for _, obj in ipairs(workspace:GetDescendants()) do
+                if obj:IsA("BasePart") then
+                    local name = obj.Name:lower()
+                    if name:find("lava") or name:find("magma") then
+                        local dist = (hrp.Position - obj.Position).Magnitude
+                        if dist < 15 and hrp.Position.Y < (obj.Position.Y + obj.Size.Y / 2 + 4) then
+                            hrp.Velocity = Vector3.new(hrp.Velocity.X, math.max(hrp.Velocity.Y, 5), hrp.Velocity.Z)
+                            hrp.CFrame = CFrame.new(hrp.Position.X, obj.Position.Y + (obj.Size.Y / 2) + 4, hrp.Position.Z) * hrp.CFrame.Rotation
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end
+
+-- Infinite Air Jump
+local function ToggleInfiniteJump(state)
+    infiniteJumpEnabled = state
+    if jumpConnection then jumpConnection:Disconnect() jumpConnection = nil end
+    if infiniteJumpEnabled then
+        jumpConnection = UserInputService.JumpRequest:Connect(function()
+            local char = LocalPlayer.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                hum:ChangeState(Enum.HumanoidStateType.Jumping)
+            end
+        end)
+    end
+end
+
+-- Fast Attack with Range Control
+local function ToggleFastAttack(state)
+    fastAttackEnabled = state
+    if fastAttackConnection then fastAttackConnection:Disconnect() fastAttackConnection = nil end
+    if fastAttackEnabled then
+        fastAttackConnection = RunService.Heartbeat:Connect(function()
+            pcall(function()
+                local char = LocalPlayer.Character
+                local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                if not hrp then return end
+
+                -- Simulate regular click inputs to speed up attack animations if holding tool
+                local tool = char:FindFirstChildOfClass("Tool")
+                if tool then
+                    game:GetService("VirtualUser"):CaptureController()
+                    game:GetService("VirtualUser"):Button1Down(Vector2.new(0, 0))
+                end
+
+                -- Target check based on slider range
+                local enemiesFolder = workspace:FindFirstChild("Enemies")
+                if enemiesFolder then
+                    for _, enemy in ipairs(enemiesFolder:GetChildren()) do
+                        local enemyHRP = enemy:FindFirstChild("HumanoidRootPart")
+                        local enemyHum = enemy:FindFirstChildOfClass("Humanoid")
+                        if enemyHRP and enemyHum and enemyHum.Health > 0 then
+                            local distance = (hrp.Position - enemyHRP.Position).Magnitude
+                            if distance <= tbl.FastAttackRange then
+                                -- Fire local hit registration event if available
+                                commE:FireServer("Hit", enemyHRP)
+                            end
+                        end
+                    end
+                end
+            end)
+        end)
     end
 end
 
@@ -894,7 +1000,7 @@ local function createTabPage(name)
     page.Size = UDim2.new(1, 0, 1, 0)
     page.BackgroundTransparency = 1
     page.BorderSizePixel = 0
-    page.CanvasSize = UDim2.new(0, 0, 0, 220)
+    page.CanvasSize = UDim2.new(0, 0, 0, 260)
     page.ScrollBarThickness = 2
     page.Visible = false
     page.Parent = ContentArea
@@ -961,7 +1067,7 @@ end
 
 switchTab("Combat")
 
--- Component Builders for Compact Panels
+-- Component Builders
 local function makeToggle(parent, text, callback)
     local b = Instance.new("TextButton")
     b.Size = UDim2.new(0, 155, 0, 32)
@@ -1000,7 +1106,6 @@ local function makeButton(parent, text, callback)
     return b
 end
 
--- Custom Slider Component Builder
 local function makeSlider(parent, text, minVal, maxVal, defaultVal, callback)
     local container = Instance.new("Frame")
     container.Size = UDim2.new(0, 155, 0, 42)
@@ -1075,6 +1180,15 @@ makeToggle(pages.Combat, "Silent Aim", function(state)
     end
 end)
 
+makeToggle(pages.Combat, "Fast Attack", function(state)
+    ToggleFastAttack(state)
+end)
+
+-- Fast Attack Range Slider placed right under Fast Attack in Combat Tab
+makeSlider(pages.Combat, "Attack Range", 10, 250, 50, function(value)
+    tbl.FastAttackRange = value
+end)
+
 makeToggle(pages.Combat, "Inf Soru", function(state)
     _G.infiniteSoruEnabled = state
     setupInfiniteSoru()
@@ -1100,13 +1214,24 @@ makeToggle(pages.Visuals, "Highlight Target", function(state)
     _G.G_ESP_Highlight = HighlightEnabled
 end)
 
--- Sliders for WalkSpeed and JumpPower added here
 makeSlider(pages.Visuals, "WalkSpeed", 16, 250, 16, function(value)
     SetWalkSpeed(value)
 end)
 
 makeSlider(pages.Visuals, "JumpPower", 50, 300, 50, function(value)
     SetJumpPower(value)
+end)
+
+makeToggle(pages.Visuals, "Water Walk", function(state)
+    ToggleWaterWalk(state)
+end)
+
+makeToggle(pages.Visuals, "Lava Walk", function(state)
+    ToggleLavaWalk(state)
+end)
+
+makeToggle(pages.Visuals, "Infinite Air Jump", function(state)
+    ToggleInfiniteJump(state)
 end)
 
 makeToggle(pages.Visuals, "Spectate Target", function(state)
@@ -1128,6 +1253,10 @@ end)
 makeButton(pages.Settings, "Unload Hub", function()
     DisableESP()
     stopRenderLoop()
+    ToggleWaterWalk(false)
+    ToggleLavaWalk(false)
+    ToggleInfiniteJump(false)
+    ToggleFastAttack(false)
     ScreenGui:Destroy()
 end)
 
@@ -1157,4 +1286,4 @@ end
 EnableDrag(MainFrame)
 EnableDrag(MiniIcon)
 
-print("Ash Client Hub (WalkSpeed & JumpPower) Successfully Loaded!")
+print("Ash Client Hub (Fast Attack, Lava/Water Walk, Air Jump) Successfully Loaded!")
