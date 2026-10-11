@@ -1,5 +1,5 @@
 -- ============================================================================
--- Ash Client Integrated Hub (ESP, Silent Aim, UI, WalkSpeed, JumpPower, Soru, WaterWalk, Dash)
+-- Ash Client Integrated Hub (ESP, Silent Aim, UI, Movement, Soru, WaterWalk, Dash)
 -- All Sources Are Public & Free - https://discord.gg/cSthtkp5dD
 -- ============================================================================
 
@@ -17,10 +17,25 @@ local tbl = {
     JumpPower = 50,
     WalkWater = false,
     DashEnabled = false,
-    DashLength = 1
+    DashLength = 1,
+    InfJump = false,
+    InfJumpConn = nil
 }
 
 local DashConnection = nil
+local soruAimEnabled = false
+local cachedTarget = nil
+
+local function getHRP(model)
+    if not model or not model:FindFirstChild("HumanoidRootPart") then return nil end
+    return model.HumanoidRootPart
+end
+
+local function getHum(char)
+    char = char or LocalPlayer.Character
+    if not char then return nil end
+    return char:FindFirstChildOfClass("Humanoid")
+end
 
 -- ==========================================
 -- 1. ESP CONFIGURATION & MODULE
@@ -343,69 +358,12 @@ local Booms = {"TAP"}
 local PredictionAmount = 0.1
 local maxRange = 1000
 
-local function getHRP(model)
-    if not model or not model:FindFirstChild("HumanoidRootPart") then return nil end
-    return model.HumanoidRootPart
-end
-
-local function clearConnections()
-    for _, conn in ipairs(characterConnections) do
-        pcall(function() conn:Disconnect() end)
-    end
-    characterConnections = {}
-end
-
-local function getPredictedPosition(hrp)
-    if not hrp then return nil end
-    local humanoid = hrp.Parent:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return hrp.Position end
-    if not PredictionEnabled or humanoid.WalkSpeed < 5 then return hrp.Position end
-    return hrp.Position + (hrp.Velocity * PredictionAmount)
-end
-
-local function isAllyWithMe(targetplayer)
-    local myGui = LocalPlayer:FindFirstChild("PlayerGui")
-    if not myGui then return false end
-
-    local scrolling = myGui:FindFirstChild("Main")
-        and myGui.Main:FindFirstChild("Allies")
-        and myGui.Main.Allies:FindFirstChild("Container")
-        and myGui.Main.Allies.Container:FindFirstChild("Allies")
-        and myGui.Main.Allies.Container.Allies:FindFirstChild("ScrollingFrame")
-
-    if scrolling then
-        for _, frame in pairs(scrolling:GetDescendants()) do
-            if frame:IsA("ImageButton") and frame.Name == targetplayer.Name then
-                return true
-            end
-        end
-    end
-    return false
-end
-
-local function isEnemy(targetplayer)
-    if not targetplayer or targetplayer == LocalPlayer then return false end
-    local myTeam = LocalPlayer.Team
-    local targetTeam = targetplayer.Team
-
-    if myTeam and targetTeam then
-        if myTeam.Name == "Pirates" and targetTeam.Name == "Marines" then return true end
-        if myTeam.Name == "Marines" and targetTeam.Name == "Pirates" then return true end
-        if myTeam.Name == "Pirates" and targetTeam.Name == "Pirates" then
-            if isAllyWithMe(targetplayer) then return false end
-            return true
-        end
-        if myTeam.Name == "Marines" and targetTeam.Name == "Marines" then return false end
-    end
-    return true
-end
-
 local function getClosestplayer(lpHRP)
     if not lpHRP then return nil end
     local closest = nil
     local closestDist = math.huge
     for _, pl in ipairs(Players:GetPlayers()) do
-        if pl ~= LocalPlayer and isEnemy(pl) and pl.Character and pl.Character.Parent ~= nil then
+        if pl ~= LocalPlayer and pl.Character and pl.Character.Parent ~= nil then
             local hum = pl.Character:FindFirstChildWhichIsA("Humanoid")
             local hrp = getHRP(pl.Character)
             if hum and hum.Health > 0 and hrp then
@@ -420,90 +378,6 @@ local function getClosestplayer(lpHRP)
     return closest
 end
 
-local function getClosestNPC(lpHRP)
-    if not lpHRP then return nil end
-    local enemiesFolder = workspace:FindFirstChild("Enemies")
-    if not enemiesFolder then return nil end
-
-    local closest = nil
-    local closestDist = math.huge
-    for _, npc in ipairs(enemiesFolder:GetChildren()) do
-        if npc:IsA("Model") then
-            local hum = npc:FindFirstChildWhichIsA("Humanoid")
-            local hrp = getHRP(npc)
-            if hum and hum.Health > 0 and hrp then
-                local dist = (hrp.Position - lpHRP.Position).Magnitude
-                if dist <= maxRange and dist < closestDist then
-                    closestDist = dist
-                    closest = npc
-                end
-            end
-        end
-    end
-    return closest
-end
-
-local function applyHighlight(targetModel, targetType)
-    if not HighlightEnabled or not targetModel then return end
-    if currentHighlight and currentHighlight.Adornee == targetModel then return end
-
-    if currentHighlight then  
-        currentHighlight:Destroy()  
-        currentHighlight = nil  
-        currentTargetType = nil  
-    end  
-
-    local hl = Instance.new("Highlight")  
-    hl.FillColor = Color3.fromRGB(255, 140, 0)  
-    hl.OutlineColor = Color3.fromRGB(255, 255, 255)  
-    hl.FillTransparency = 0.5  
-    hl.OutlineTransparency = 0  
-    hl.Adornee = targetModel  
-    hl.Parent = targetModel  
-    currentHighlight = hl  
-    currentTargetType = targetType
-
-    pcall(function()
-        VSkillModule:CheckVSkillUsage(SilentAimModule)
-    end)
-end
-
-local function clearHighlight()
-    if currentHighlight then
-        currentHighlight:Destroy()
-        currentHighlight = nil
-        currentTargetType = nil
-    end
-end
-
-local function isSkillReadyForTool(toolName)
-    if not toolName then return false end
-    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
-    if not playerGui then return false end
-    local skillsFolder = playerGui:FindFirstChild("Main") and playerGui.Main:FindFirstChild("Skills")
-    if not skillsFolder then return false end
-    local toolFrame = skillsFolder:FindFirstChild(toolName)
-    if not toolFrame then return false end
-
-    for _, skillKey in ipairs({"Z", "X", "C", "V"}) do
-        local skill = toolFrame:FindFirstChild(skillKey)
-        if skill and skill:FindFirstChild("Cooldown") and skill.Cooldown:IsA("Frame") then
-            if skill.Cooldown.Size.X.Scale == 1.0 then
-                return true
-            end
-        end
-    end
-    return false
-end
-
-local function isNotDoughValidCondition()
-    return (currentTool and currentTool.Name == "Dough-Dough")
-end
-
-local function isNotValidCondition()
-    return (currentTool and currentTool.Name == "Lightning-Lightning") or (currentTool and currentTool.Name == "Portal-Portal")
-end
-
 local function startRenderLoop()
     if renderConnection then return end
 
@@ -513,50 +387,17 @@ local function startRenderLoop()
         local lpHRP = lpChar:FindFirstChild("HumanoidRootPart")
         if not lpHRP then return end
 
-        if not SilentAimPlayersEnabled and not SilentAimNPCsEnabled then return end
-
-        local targetModel = nil
-        local lookTargetPos = nil
-
         if SilentAimPlayersEnabled then
             local targetplayer = Selectedplayer or getClosestplayer(lpHRP)
             if targetplayer and targetplayer ~= LocalPlayer and targetplayer.Character then
+                cachedTarget = targetplayer
                 playersaimbot = targetplayer.Name
                 local hrp = getHRP(targetplayer.Character)
-                PlayersPosition = getPredictedPosition(hrp)
-                lookTargetPos = PlayersPosition
-                targetModel = targetplayer.Character
-                applyHighlight(targetModel, "player")
+                PlayersPosition = hrp and hrp.Position or nil
             else
+                cachedTarget = nil
                 playersaimbot, PlayersPosition = nil, nil
             end
-        elseif currentTargetType == "player" then
-            playersaimbot, PlayersPosition = nil, nil
-            clearHighlight()
-        end
-
-        if SilentAimNPCsEnabled then  
-            local closestNPC = getClosestNPC(lpHRP)  
-            if closestNPC then  
-                NPCaimbot = closestNPC.Name  
-                local hrp = getHRP(closestNPC)  
-                NPCPosition = getPredictedPosition(hrp)
-                lookTargetPos = NPCPosition
-                if not targetModel then  
-                    targetModel = closestNPC  
-                    applyHighlight(targetModel, "NPC")  
-                end  
-            else  
-                NPCaimbot, NPCPosition = nil, nil  
-            end
-        elseif currentTargetType == "NPC" then
-            NPCaimbot, NPCPosition = nil, nil  
-            clearHighlight()
-        end
-        
-        if currentTool and lookTargetPos and isSkillReadyForTool(currentTool.Name) and not isNotDoughValidCondition() then
-            local lookVector = (Vector3.new(lookTargetPos.X, lpHRP.Position.Y, lookTargetPos.Z) - lpHRP.Position).Unit
-            lpHRP.CFrame = CFrame.new(lpHRP.Position, lpHRP.Position + lookVector)
         end
     end)
 end
@@ -568,140 +409,33 @@ local function stopRenderLoop()
     end
 end
 
-local function hookTool(tool)
-    currentTool = tool
-    table.insert(characterConnections, tool.AncestryChanged:Connect(function(_, parent)
-        if not parent then
-            currentTool = nil
+-- SORU AIM HOOK
+local mouse = LocalPlayer:GetMouse()
+local mt = getrawmetatable(game)
+local oldIndex = mt.__index
+setreadonly(mt, false)
+mt.__index = newcclosure(function(self, key)
+    if soruAimEnabled and (key == "Hit" or key == "Target") and self == mouse then
+        local eHRP = cachedTarget and cachedTarget.Character and cachedTarget.Character:FindFirstChild("HumanoidRootPart")
+        if eHRP then
+            if key == "Hit" then return CFrame.new(eHRP.Position)
+            elseif key == "Target" then return eHRP end
         end
-    end))
-end
-
-local function isValidCondition()
-    return (currentTool and currentTool.Name == "Buddy Sword")
-end
-
-spawn(function()
-    local ok, hookMeta = pcall(getrawmetatable, game)
-    if ok and hookMeta then
-        setreadonly(hookMeta, false)
-        local OldHook
-        OldHook = hookmetamethod(game, "__namecall", function(self, V1, V2, ...)
-            local Method = (getnamecallmethod and getnamecallmethod():lower()) or ""
-
-            if tostring(self) == "RemoteEvent" and Method == "fireserver" then
-                if typeof(V1) == "Vector3" then
-                    if SilentAimPlayersEnabled and PlayersPosition then
-                        return OldHook(self, PlayersPosition, V2, ...)
-                    elseif SilentAimNPCsEnabled and NPCPosition then
-                        return OldHook(self, NPCPosition, V2, ...)
-                    end
-                end                
-                if type(V1) == "string" and table.find(Booms, V1) then
-                    if ZSkillorM1 then 
-                        if SilentAimPlayersEnabled and PlayersPosition then
-                            return OldHook(self, V1, PlayersPosition, nil, ...)
-                        elseif SilentAimNPCsEnabled and NPCPosition then
-                            return OldHook(self, V1, NPCPosition, nil, ...)
-                        end
-                    end
-                end   
-            elseif Method == "invokeserver" then  
-                if isValidCondition() then
-                    if type(V1) == "string" and table.find(Skills, V1) then  
-                        if SilentAimPlayersEnabled and PlayersPosition then  
-                            return OldHook(self, V1, PlayersPosition, nil, ...)
-                        elseif SilentAimNPCsEnabled and NPCPosition then  
-                            return OldHook(self, V1, NPCPosition, nil, ...)
-                        end  
-                    end    
-                end                
-            end
-            
-            return OldHook(self, V1, V2, ...)
-        end)
-        setreadonly(hookMeta, true)
     end
+    return oldIndex(self, key)
 end)
-
-if not isNotValidValidCondition and not isNotValidCondition() then
-    if MouseModule and typeof(MouseModule) == "Instance" then
-        local ok2, Mouse = pcall(require, MouseModule)
-        if not ok2 or type(Mouse) ~= "table" then Mouse = nil end
-
-        RunService.Heartbeat:Connect(function()          
-            if not ZSkillorM1 or (not SilentAimPlayersEnabled and not SilentAimNPCsEnabled) then return end
-            if Mouse and (SilentAimPlayersEnabled or SilentAimNPCsEnabled) then  
-                local targetCFrame = PlayersPosition and CFrame.new(PlayersPosition) or (NPCPosition and CFrame.new(NPCPosition))
-                if targetCFrame then  
-                    pcall(function()  
-                        Mouse.Hit = targetCFrame  
-                        Mouse.Target = nil  
-                    end)  
-                end  
-            end  
-        end)
-    end
-end
-
-local function HasTag(tagName)
-    local char = LocalPlayer.Character
-    if not char then return false end
-    local success, result = pcall(function()
-        return game:GetService("CollectionService"):HasTag(char, tagName)
-    end)
-    return success and result
-end
-
-local function startAutoKenLoop()
-    if autoKenRunning then return end
-    autoKenRunning = true
-
-    task.spawn(function()
-        while AutoKen do
-            task.wait(0.1)
-            if HasTag("Ken") then
-                local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
-                if playerGui then
-                    local kenButton = playerGui:FindFirstChild("MobileContextButtons")
-                        and playerGui.MobileContextButtons.ContextButtonFrame:FindFirstChild("BoundActionKen")
-                    if kenButton and kenButton:GetAttribute("Selected") ~= true then
-                        kenButton:SetAttribute("Selected", true)
-                    end
-                end
-
-                local observationManager = rawget(_G, "OM")
-                if observationManager and not observationManager.active then
-                    observationManager.radius = 0
-                    observationManager:setActive(true)
-                    commE:FireServer("Ken", true)
-                end
-            end
-        end
-        autoKenRunning = false
-    end)
-end
+setreadonly(mt, true)
 
 -- ==========================================
--- 3. INFINITE SORU & CHARACTER STATS HANDLERS
+-- 3. MOVEMENT & CHARACTER STATS HANDLERS
 -- ==========================================
 
 _G.infiniteSoruEnabled = false
 
-local function setupInfiniteSoru()
-    if not _G.infiniteSoruEnabled then return end
-    pcall(function()
-        local char = LocalPlayer.Character
-        if char then char:SetAttribute("FlashstepCooldown", 1) end
-    end)
-end
-
--- WalkSpeed & JumpPower Custom Functions
 local function applyCharacterStats(char)
     if not char then return end
     local humanoid = char:WaitForChild("Humanoid", 5)
     if humanoid then
-        -- Apply WalkSpeed
         if tbl.WalkSpeed then
             humanoid.WalkSpeed = tbl.WalkSpeed
             humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
@@ -710,7 +444,6 @@ local function applyCharacterStats(char)
                 end
             end)
         end
-        -- Apply JumpPower
         if tbl.JumpPower then
             humanoid.JumpPower = tbl.JumpPower
         end
@@ -754,34 +487,24 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
+-- INFINITE JUMP LOGIC
+local function startInfJump()
+    if tbl.InfJumpConn then tbl.InfJumpConn:Disconnect() end
+    tbl.InfJumpConn = UserInputService.JumpRequest:Connect(function()
+        if not tbl.InfJump then return end
+        pcall(function()
+            local hum = getHum()
+            if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+        end)
+    end)
+end
+
 local function onCharacterAdded(char)
-    clearConnections()
     applyCharacterStats(char)
-    for _, child in ipairs(char:GetChildren()) do
-        if child:IsA("Tool") then hookTool(child) end
-    end
-    table.insert(characterConnections, char.ChildAdded:Connect(function(child)
-        if child:IsA("Tool") then hookTool(child) end
-    end))
-    table.insert(characterConnections, char.ChildRemoved:Connect(function(child)
-        if child == currentTool then currentTool = nil end
-    end))
 end
 
 LocalPlayer.CharacterAdded:Connect(onCharacterAdded)
 if LocalPlayer.Character then onCharacterAdded(LocalPlayer.Character) end
-
-task.spawn(function()
-    while true do
-        task.wait(0.1)
-        if _G.infiniteSoruEnabled then
-            pcall(function()
-                local char = LocalPlayer.Character
-                if char then char:SetAttribute("FlashstepCooldown", 1) end
-            end)
-        end
-    end
-end)
 
 -- ==========================================
 -- 4. COMPACT CENTUDOX V3 UI INTEGRATION
@@ -870,7 +593,7 @@ TabContainer.Size = UDim2.new(1, 0, 1, -6)
 TabContainer.Position = UDim2.new(0, 0, 0, 6)
 TabContainer.BackgroundTransparency = 1
 TabContainer.BorderSizePixel = 0
-TabContainer.CanvasSize = UDim2.new(0, 0, 0, 120)
+TabContainer.CanvasSize = UDim2.new(0, 0, 0, 160)
 TabContainer.ScrollBarThickness = 2
 TabContainer.Parent = Sidebar
 
@@ -914,14 +637,13 @@ end)
 local pages = {}
 local tabButtons = {}
 
-local function createTabPage(name)
+local function createTabPage(name, canvasHeight)
     local page = Instance.new("ScrollingFrame")
     page.Name = name .. "Page"
     page.Size = UDim2.new(1, 0, 1, 0)
     page.BackgroundTransparency = 1
     page.BorderSizePixel = 0
-    -- Expanded CanvasSize for Visuals tab to accommodate all items completely
-    page.CanvasSize = UDim2.new(0, 0, 0, name == "Visuals" and 380 or 260)
+    page.CanvasSize = UDim2.new(0, 0, 0, canvasHeight or 260)
     page.ScrollBarThickness = 2
     page.Visible = false
     page.Parent = ContentArea
@@ -959,13 +681,15 @@ local function createTabButton(name, order)
 end
 
 -- Initialize Tabs
-createTabPage("Combat")
-createTabPage("Visuals")
-createTabPage("Settings")
+createTabPage("Combat", 260)
+createTabPage("Movement", 420)
+createTabPage("Visuals", 260)
+createTabPage("Settings", 260)
 
 createTabButton("Combat", 1)
-createTabButton("Visuals", 2)
-createTabButton("Settings", 3)
+createTabButton("Movement", 2)
+createTabButton("Visuals", 3)
+createTabButton("Settings", 4)
 
 local function switchTab(tabName)
     for name, page in pairs(pages) do
@@ -1027,7 +751,6 @@ local function makeButton(parent, text, callback)
     return b
 end
 
--- Custom Slider Component Builder
 local function makeSlider(parent, text, minVal, maxVal, defaultVal, callback)
     local container = Instance.new("Frame")
     container.Size = UDim2.new(0, 155, 0, 42)
@@ -1091,11 +814,15 @@ local function makeSlider(parent, text, minVal, maxVal, defaultVal, callback)
     return container
 end
 
+-- ==========================================
+-- POPULATE TABS
+-- ==========================================
+
 -- Populate Combat Tab
 makeToggle(pages.Combat, "Silent Aim", function(state)
     SilentAimPlayersEnabled = state
     UserWantsplayerAim = state
-    if SilentAimPlayersEnabled or SilentAimNPCsEnabled then
+    if SilentAimPlayersEnabled then
         startRenderLoop()
     else
         stopRenderLoop()
@@ -1104,7 +831,6 @@ end)
 
 makeToggle(pages.Combat, "Inf Soru", function(state)
     _G.infiniteSoruEnabled = state
-    setupInfiniteSoru()
 end)
 
 makeToggle(pages.Combat, "Auto Ken", function(state)
@@ -1116,31 +842,25 @@ makeButton(pages.Combat, "Skip Player", function()
     if getgenv().SkipPlayer then getgenv().SkipPlayer() end
 end)
 
--- Populate Visuals Tab
-makeToggle(pages.Visuals, "ESP Module", function(state)
-    _G.G_ESPEnabled = state
-    if _G.G_ESPEnabled then EnableESP() else DisableESP() end
-end)
-
-makeToggle(pages.Visuals, "Highlight Target", function(state)
-    HighlightEnabled = state
-    _G.G_ESP_Highlight = HighlightEnabled
-end)
-
--- WalkSpeed, JumpPower & Movement Sliders
-makeSlider(pages.Visuals, "WalkSpeed", 16, 250, 16, function(value)
+-- Populate Movement Tab
+makeSlider(pages.Movement, "WalkSpeed", 16, 250, 16, function(value)
     SetWalkSpeed(value)
 end)
 
-makeSlider(pages.Visuals, "JumpPower", 50, 300, 50, function(value)
+makeSlider(pages.Movement, "JumpPower", 50, 300, 50, function(value)
     SetJumpPower(value)
 end)
 
-makeToggle(pages.Visuals, "Walk On Water", function(state)
+makeToggle(pages.Movement, "Walk On Water", function(state)
     tbl.WalkWater = state
 end)
 
-makeToggle(pages.Visuals, "Dash Length", function(dashsh)
+makeToggle(pages.Movement, "Infinite Jump", function(state)
+    tbl.InfJump = state
+    if state then startInfJump() elseif tbl.InfJumpConn then tbl.InfJumpConn:Disconnect() end
+end)
+
+makeToggle(pages.Movement, "Dash Length", function(dashsh)
     tbl.DashEnabled = dashsh
     if dashsh then
         if DashConnection then task.cancel(DashConnection) end
@@ -1171,8 +891,48 @@ makeToggle(pages.Visuals, "Dash Length", function(dashsh)
     end
 end)
 
-makeSlider(pages.Visuals, "Max Distance", 1, 300, 1, function(v)
+makeSlider(pages.Movement, "Max Distance", 1, 300, 1, function(v)
     tbl.DashLength = v
+end)
+
+-- In-Game Soru Silent Toggle Floating Button (Appears when enabled)
+local SoruButton = Instance.new("TextButton")
+SoruButton.Name = "SoruSilentButton"
+SoruButton.Parent = ScreenGui
+SoruButton.Size = UDim2.new(0, 90, 0, 36)
+SoruButton.Position = UDim2.new(0.05, 0, 0.32, 0)
+SoruButton.BackgroundColor3 = BackgroundColor
+SoruButton.Text = "Soru: OFF"
+SoruButton.Font = Enum.Font.GothamBold
+SoruButton.TextColor3 = Color3.fromRGB(200, 200, 205)
+SoruButton.TextSize = 11
+SoruButton.Visible = false
+ApplyStyle(SoruButton, 6)
+
+SoruButton.MouseButton1Click:Connect(function()
+    soruAimEnabled = not soruAimEnabled
+    SoruButton.Text = soruAimEnabled and "Soru: ON" or "Soru: OFF"
+    SoruButton.TextColor3 = soruAimEnabled and ThemeColor or Color3.fromRGB(200, 200, 205)
+end)
+
+makeToggle(pages.Movement, "Soru Silent", function(state)
+    SoruButton.Visible = state
+    if not state then
+        soruAimEnabled = false
+        SoruButton.Text = "Soru: OFF"
+        SoruButton.TextColor3 = Color3.fromRGB(200, 200, 205)
+    end
+end)
+
+-- Populate Visuals Tab
+makeToggle(pages.Visuals, "ESP Module", function(state)
+    _G.G_ESPEnabled = state
+    if _G.G_ESPEnabled then EnableESP() else DisableESP() end
+end)
+
+makeToggle(pages.Visuals, "Highlight Target", function(state)
+    HighlightEnabled = state
+    _G.G_ESP_Highlight = HighlightEnabled
 end)
 
 makeToggle(pages.Visuals, "Spectate Target", function(state)
@@ -1194,10 +954,11 @@ end)
 makeButton(pages.Settings, "Unload Hub", function()
     DisableESP()
     stopRenderLoop()
+    if tbl.InfJumpConn then tbl.InfJumpConn:Disconnect() end
     ScreenGui:Destroy()
 end)
 
--- Enable Dragging on Main Frame and Mini Icon
+-- Enable Dragging on Main Frame, Mini Icon, and Soru Floating Button
 local function EnableDrag(frame)
     local dragging, dragStart, startPos
     frame.InputBegan:Connect(function(input)
@@ -1222,5 +983,6 @@ end
 
 EnableDrag(MainFrame)
 EnableDrag(MiniIcon)
+EnableDrag(SoruButton)
 
-print("Ash Client Hub (Visuals Canvas Size Expanded) Successfully Loaded!")
+print("Ash Client Hub (Movement Tab & Soru Silent Added) Successfully Loaded!")
