@@ -1,5 +1,5 @@
 -- ============================================================================
--- Ash Client Integrated Hub (ESP, Silent Aim, UI, Fast Attack, Movement Features)
+-- Ash Client Integrated Hub (ESP, Silent Aim, UI, Water Walk, Fast Attack)
 -- All Sources Are Public & Free - https://discord.gg/cSthtkp5dD
 -- ============================================================================
 
@@ -11,12 +11,41 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- Global settings table for values
+-- Global settings tables for values and states
 local tbl = {
     WalkSpeed = 16,
     JumpPower = 50,
-    FastAttackRange = 50
 }
+
+local S = {
+    WalkWater = false,
+}
+
+local Settings = {
+    AutoClick = false,
+    ClickDelay = 0.05,
+}
+
+-- Environment references for fast attack
+local Player = LocalPlayer
+local Enemies = workspace:WaitForChild("Enemies", 99)
+local Characters = workspace:WaitForChild("Characters", 99)
+local Net = ReplicatedStorage:WaitForChild("Net", 99)
+
+-- Helper for Safe WaitForChild
+local function SafeWaitForChild(parent, name)
+    local found = parent:FindFirstChild(name)
+    if not found then
+        found = parent:WaitForChild(name, 99)
+    end
+    return found
+end
+
+local function getHRP()
+    local char = LocalPlayer.Character
+    if not char then return nil end
+    return char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart
+end
 
 -- ==========================================
 -- 1. ESP CONFIGURATION & MODULE
@@ -309,9 +338,8 @@ if not successVSkill or type(VSkillModule) ~= "table" then
     VSkillModule = { CheckVSkillUsage = function() end }
 end
 
-local RS = ReplicatedStorage
-local commE = RS:WaitForChild("Remotes", 99):WaitForChild("CommE", 99)
-local MouseModule = RS:FindFirstChild("Mouse")
+local commE = ReplicatedStorage:WaitForChild("Remotes", 99):WaitForChild("CommE", 99)
+local MouseModule = ReplicatedStorage:FindFirstChild("Mouse")
 
 local SilentAimPlayersEnabled = false
 local SilentAimNPCsEnabled = false
@@ -339,7 +367,7 @@ local Booms = {"TAP"}
 local PredictionAmount = 0.1
 local maxRange = 1000
 
-local function getHRP(model)
+local function getHRPModel(model)
     if not model or not model:FindFirstChild("HumanoidRootPart") then return nil end
     return model.HumanoidRootPart
 end
@@ -403,7 +431,7 @@ local function getClosestplayer(lpHRP)
     for _, pl in ipairs(Players:GetPlayers()) do
         if pl ~= LocalPlayer and isEnemy(pl) and pl.Character and pl.Character.Parent ~= nil then
             local hum = pl.Character:FindFirstChildWhichIsA("Humanoid")
-            local hrp = getHRP(pl.Character)
+            local hrp = getHRPModel(pl.Character)
             if hum and hum.Health > 0 and hrp then
                 local dist = (hrp.Position - lpHRP.Position).Magnitude
                 if dist <= maxRange and dist < closestDist then
@@ -426,7 +454,7 @@ local function getClosestNPC(lpHRP)
     for _, npc in ipairs(enemiesFolder:GetChildren()) do
         if npc:IsA("Model") then
             local hum = npc:FindFirstChildWhichIsA("Humanoid")
-            local hrp = getHRP(npc)
+            local hrp = getHRPModel(npc)
             if hum and hum.Health > 0 and hrp then
                 local dist = (hrp.Position - lpHRP.Position).Magnitude
                 if dist <= maxRange and dist < closestDist then
@@ -496,10 +524,6 @@ local function isNotDoughValidCondition()
     return (currentTool and currentTool.Name == "Dough-Dough")
 end
 
-local function isNotValidCondition()
-    return (currentTool and currentTool.Name == "Lightning-Lightning") or (currentTool and currentTool.Name == "Portal-Portal")
-end
-
 local function startRenderLoop()
     if renderConnection then return end
 
@@ -518,7 +542,7 @@ local function startRenderLoop()
             local targetplayer = Selectedplayer or getClosestplayer(lpHRP)
             if targetplayer and targetplayer ~= LocalPlayer and targetplayer.Character then
                 playersaimbot = targetplayer.Name
-                local hrp = getHRP(targetplayer.Character)
+                local hrp = getHRPModel(targetplayer.Character)
                 PlayersPosition = getPredictedPosition(hrp)
                 lookTargetPos = PlayersPosition
                 targetModel = targetplayer.Character
@@ -535,7 +559,7 @@ local function startRenderLoop()
             local closestNPC = getClosestNPC(lpHRP)  
             if closestNPC then  
                 NPCaimbot = closestNPC.Name  
-                local hrp = getHRP(closestNPC)  
+                local hrp = getHRPModel(closestNPC)  
                 NPCPosition = getPredictedPosition(hrp)
                 lookTargetPos = NPCPosition
                 if not targetModel then  
@@ -571,73 +595,6 @@ local function hookTool(tool)
             currentTool = nil
         end
     end))
-end
-
-local function isValidCondition()
-    return (currentTool and currentTool.Name == "Buddy Sword")
-end
-
-spawn(function()
-    local ok, hookMeta = pcall(getrawmetatable, game)
-    if ok and hookMeta then
-        setreadonly(hookMeta, false)
-        local OldHook
-        OldHook = hookmetamethod(game, "__namecall", function(self, V1, V2, ...)
-            local Method = (getnamecallmethod and getnamecallmethod():lower()) or ""
-
-            if tostring(self) == "RemoteEvent" and Method == "fireserver" then
-                if typeof(V1) == "Vector3" then
-                    if SilentAimPlayersEnabled and PlayersPosition then
-                        return OldHook(self, PlayersPosition, V2, ...)
-                    elseif SilentAimNPCsEnabled and NPCPosition then
-                        return OldHook(self, NPCPosition, V2, ...)
-                    end
-                end                
-                if type(V1) == "string" and table.find(Booms, V1) then
-                    if ZSkillorM1 then 
-                        if SilentAimPlayersEnabled and PlayersPosition then
-                            return OldHook(self, V1, PlayersPosition, nil, ...)
-                        elseif SilentAimNPCsEnabled and NPCPosition then
-                            return OldHook(self, V1, NPCPosition, nil, ...)
-                        end
-                    end
-                end   
-            elseif Method == "invokeserver" then  
-                if isValidCondition() then
-                    if type(V1) == "string" and table.find(Skills, V1) then  
-                        if SilentAimPlayersEnabled and PlayersPosition then  
-                            return OldHook(self, V1, PlayersPosition, nil, ...)
-                        elseif SilentAimNPCsEnabled and NPCPosition then  
-                            return OldHook(self, V1, NPCPosition, nil, ...)
-                        end  
-                    end    
-                end                
-            end
-            
-            return OldHook(self, V1, V2, ...)
-        end)
-        setreadonly(hookMeta, true)
-    end
-end)
-
-if not isNotValidValidCondition and not isNotValidCondition() then
-    if MouseModule and typeof(MouseModule) == "Instance" then
-        local ok2, Mouse = pcall(require, MouseModule)
-        if not ok2 or type(Mouse) ~= "table" then Mouse = nil end
-
-        RunService.Heartbeat:Connect(function()          
-            if not ZSkillorM1 or (not SilentAimPlayersEnabled and not SilentAimNPCsEnabled) then return end
-            if Mouse and (SilentAimPlayersEnabled or SilentAimNPCsEnabled) then  
-                local targetCFrame = PlayersPosition and CFrame.new(PlayersPosition) or (NPCPosition and CFrame.new(NPCPosition))
-                if targetCFrame then  
-                    pcall(function()  
-                        Mouse.Hit = targetCFrame  
-                        Mouse.Target = nil  
-                    end)  
-                end  
-            end  
-        end)
-    end
 end
 
 local function HasTag(tagName)
@@ -679,18 +636,10 @@ local function startAutoKenLoop()
 end
 
 -- ==========================================
--- 3. MOVEMENT & COMBAT MODULES
+-- 3. MOVEMENT & INTEGRATED FAST ATTACK
 -- ==========================================
 
 _G.infiniteSoruEnabled = false
-local waterWalkEnabled = false
-local waterWalkConnection = nil
-local lavaWalkEnabled = false
-local lavaWalkConnection = nil
-local infiniteJumpEnabled = false
-local jumpConnection = nil
-local fastAttackEnabled = false
-local fastAttackConnection = nil
 
 local function setupInfiniteSoru()
     if not _G.infiniteSoruEnabled then return end
@@ -734,113 +683,102 @@ local function SetJumpPower(jumpPower)
     end
 end
 
--- Water Walk
-local function ToggleWaterWalk(state)
-    waterWalkEnabled = state
-    if waterWalkConnection then waterWalkConnection:Disconnect() waterWalkConnection = nil end
-    if waterWalkEnabled then
-        waterWalkConnection = RunService.Heartbeat:Connect(function()
-            local char = LocalPlayer.Character
-            if not char then return end
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if not hrp or not hum then return end
-
-            if hrp.Position.Y < 12 and hum:GetState() ~= Enum.HumanoidStateType.Jumping then
-                hrp.Velocity = Vector3.new(hrp.Velocity.X, 0, hrp.Velocity.Z)
-                hrp.CFrame = CFrame.new(hrp.Position.X, 12.5, hrp.Position.Z) * hrp.CFrame.Rotation
+-- Walk on Water (Your Provided Logic)
+local waterPart = nil
+RunService.RenderStepped:Connect(function()
+    local hrp = getHRP()
+    if S.WalkWater and hrp then
+        if hrp.Position.Y >= 9.5 and hrp.Velocity.Y <= 0 then
+            if not waterPart or not waterPart.Parent then
+                waterPart = Instance.new("Part", workspace)
+                waterPart.Name = "SacredPvPWater"; waterPart.Anchored = true
+                waterPart.CanCollide = true; waterPart.Transparency = 1
+                waterPart.Size = Vector3.new(20,1,20)
             end
-        end)
+            waterPart.CFrame = CFrame.new(hrp.Position.X, 9.5, hrp.Position.Z)
+        else
+            if waterPart then waterPart:Destroy(); waterPart = nil end
+        end
+    else
+        if waterPart then waterPart:Destroy(); waterPart = nil end
     end
+end)
+
+-- Fast Attack Module (Your Provided Logic)
+local FastAttack = {
+    Distance = 100,
+    attackMobs = true,
+    attackPlayers = true,
+    Equipped = nil
+}
+
+local RegisterAttack = SafeWaitForChild(Net, "RE/RegisterAttack")
+local RegisterHit = SafeWaitForChild(Net, "RE/RegisterHit")
+
+local function IsAlive(character)
+    return character and character:FindFirstChild("Humanoid") and character.Humanoid.Health > 0
 end
 
--- Lava Walk
-local function ToggleLavaWalk(state)
-    lavaWalkEnabled = state
-    if lavaWalkConnection then lavaWalkConnection:Disconnect() lavaWalkConnection = nil end
-    if lavaWalkEnabled then
-        lavaWalkConnection = RunService.Heartbeat:Connect(function()
-            local char = LocalPlayer.Character
-            if not char then return end
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            if not hrp then return end
-
-            for _, obj in ipairs(workspace:GetDescendants()) do
-                if obj:IsA("BasePart") then
-                    local name = obj.Name:lower()
-                    if name:find("lava") or name:find("magma") then
-                        local dist = (hrp.Position - obj.Position).Magnitude
-                        if dist < 15 and hrp.Position.Y < (obj.Position.Y + obj.Size.Y / 2 + 4) then
-                            hrp.Velocity = Vector3.new(hrp.Velocity.X, math.max(hrp.Velocity.Y, 5), hrp.Velocity.Z)
-                            hrp.CFrame = CFrame.new(hrp.Position.X, obj.Position.Y + (obj.Size.Y / 2) + 4, hrp.Position.Z) * hrp.CFrame.Rotation
-                        end
-                    end
-                end
+local function ProcessEnemies(OthersEnemies, Folder)
+    local BasePart = nil
+    for _, Enemy in Folder:GetChildren() do
+        local Head = Enemy:FindFirstChild("Head")
+        if Head and IsAlive(Enemy) and Player:DistanceFromCharacter(Head.Position) < FastAttack.Distance then
+            if Enemy ~= Player.Character then
+                table.insert(OthersEnemies, { Enemy, Head })
+                BasePart = Head
             end
-        end)
+        end
     end
+    return BasePart
 end
 
--- Infinite Air Jump
-local function ToggleInfiniteJump(state)
-    infiniteJumpEnabled = state
-    if jumpConnection then jumpConnection:Disconnect() jumpConnection = nil end
-    if infiniteJumpEnabled then
-        jumpConnection = UserInputService.JumpRequest:Connect(function()
-            local char = LocalPlayer.Character
-            local hum = char and char:FindFirstChildOfClass("Humanoid")
-            if hum then
-                hum:ChangeState(Enum.HumanoidStateType.Jumping)
-            end
-        end)
-    end
+function FastAttack:Attack(BasePart, OthersEnemies)
+    if not BasePart or #OthersEnemies == 0 then return end
+    RegisterAttack:FireServer(Settings.ClickDelay or 0)
+    RegisterHit:FireServer(BasePart, OthersEnemies)
 end
 
--- Fixed Fast Attack using workspace enemy distance validation & remotes
-local function ToggleFastAttack(state)
-    fastAttackEnabled = state
-    if fastAttackConnection then fastAttackConnection:Disconnect() fastAttackConnection = nil end
-    if fastAttackEnabled then
-        fastAttackConnection = RunService.Heartbeat:Connect(function()
+function FastAttack:AttackNearest()
+    local OthersEnemies = {}
+    local Part1 = ProcessEnemies(OthersEnemies, Enemies)
+    local Part2 = ProcessEnemies(OthersEnemies, Characters)
+
+    local character = Player.Character
+    if not character then return end
+    local equippedWeapon = character:FindFirstChildOfClass("Tool")
+
+    if equippedWeapon and equippedWeapon:FindFirstChild("LeftClickRemote") then
+        for _, enemyData in ipairs(OthersEnemies) do
+            local enemy = enemyData[1]
+            local direction = (enemy.HumanoidRootPart.Position - character:GetPivot().Position).Unit
             pcall(function()
-                local char = LocalPlayer.Character
-                if not char then return end
-                local hrp = char:FindFirstChild("HumanoidRootPart")
-                if not hrp then return end
-
-                local tool = char:FindFirstChildOfClass("Tool")
-                if tool then
-                    pcall(function()
-                        local vu = game:GetService("VirtualUser")
-                        vu:CaptureController()
-                        vu:Button1Down(Vector2.new(0,0))
-                    end)
-                end
-
-                local enemiesFolder = workspace:FindFirstChild("Enemies")
-                if enemiesFolder then
-                    for _, enemy in ipairs(enemiesFolder:GetChildren()) do
-                        if enemy:IsA("Model") and not enemy:GetAttribute("IsBoat") then
-                            local enemyHRP = enemy:FindFirstChild("HumanoidRootPart") or enemy.PrimaryPart
-                            local enemyHum = enemy:FindFirstChildOfClass("Humanoid")
-                            if enemyHRP and enemyHum and enemyHum.Health > 0 then
-                                local magnitude = (enemyHRP.Position - hrp.Position).Magnitude
-                                if magnitude <= tbl.FastAttackRange then
-                                    local registerHitRemote = ReplicatedStorage:FindFirstChild("RegisterHit", true)
-                                    if registerHitRemote and registerHitRemote:IsA("RemoteEvent") then
-                                        registerHitRemote:FireServer(enemyHRP, enemyHRP.Position)
-                                    else
-                                        commE:FireServer("Hit", enemyHRP)
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
+                equippedWeapon.LeftClickRemote:FireServer(direction, 1)
             end)
-        end)
+        end
+    elseif #OthersEnemies > 0 then
+        self:Attack(Part1 or Part2, OthersEnemies)
+    else
+        task.wait(0)
     end
 end
+
+function FastAttack:BladeHits()
+    local Equipped = IsAlive(Player.Character) and Player.Character:FindFirstChildOfClass("Tool")
+    if Equipped and Equipped.ToolTip ~= "Gun" then
+        self:AttackNearest()
+    else
+        task.wait(0)
+    end
+end
+
+task.spawn(function()
+    while task.wait(Settings.ClickDelay) do
+        if Settings.AutoClick then
+            FastAttack:BladeHits()
+        end
+    end
+end)
 
 local function onCharacterAdded(char)
     clearConnections()
@@ -1181,11 +1119,11 @@ makeToggle(pages.Combat, "Silent Aim", function(state)
 end)
 
 makeToggle(pages.Combat, "Fast Attack", function(state)
-    ToggleFastAttack(state)
+    Settings.AutoClick = state
 end)
 
-makeSlider(pages.Combat, "Attack Range", 10, 250, 50, function(value)
-    tbl.FastAttackRange = value
+makeSlider(pages.Combat, "Attack Range", 10, 250, 100, function(value)
+    FastAttack.Distance = value
 end)
 
 makeToggle(pages.Combat, "Inf Soru", function(state)
@@ -1222,15 +1160,7 @@ makeSlider(pages.Visuals, "JumpPower", 50, 300, 50, function(value)
 end)
 
 makeToggle(pages.Visuals, "Water Walk", function(state)
-    ToggleWaterWalk(state)
-end)
-
-makeToggle(pages.Visuals, "Lava Walk", function(state)
-    ToggleLavaWalk(state)
-end)
-
-makeToggle(pages.Visuals, "Infinite Air Jump", function(state)
-    ToggleInfiniteJump(state)
+    S.WalkWater = state
 end)
 
 makeToggle(pages.Visuals, "Spectate Target", function(state)
@@ -1252,10 +1182,9 @@ end)
 makeButton(pages.Settings, "Unload Hub", function()
     DisableESP()
     stopRenderLoop()
-    ToggleWaterWalk(false)
-    ToggleLavaWalk(false)
-    ToggleInfiniteJump(false)
-    ToggleFastAttack(false)
+    S.WalkWater = false
+    Settings.AutoClick = false
+    if waterPart then waterPart:Destroy() end
     ScreenGui:Destroy()
 end)
 
@@ -1284,4 +1213,4 @@ end
 EnableDrag(MainFrame)
 EnableDrag(MiniIcon)
 
-print("Ash Client Hub (Fixed Fast Attack & Range Slider) Successfully Loaded!")
+print("Ash Client Hub (Custom Fast Attack & Water Part Walk) Successfully Loaded!")
