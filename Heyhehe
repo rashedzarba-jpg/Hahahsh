@@ -1,5 +1,5 @@
 -- ============================================================================
--- Ash Client Integrated Hub (ESP, Silent Aim, UI, Working Water Walk, Soru)
+-- Ash Client Integrated Hub (ESP, Silent Aim, UI, WalkSpeed, JumpPower, Soru)
 -- All Sources Are Public & Free - https://discord.gg/cSthtkp5dD
 -- ============================================================================
 
@@ -11,7 +11,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- Local settings table for movement modifiers
+-- Global settings table for values
 local tbl = {
     WalkSpeed = 16,
     JumpPower = 50
@@ -677,37 +677,11 @@ local function startAutoKenLoop()
     end)
 end
 
-local function onCharacterAdded(char)
-    clearConnections()
-    for _, child in ipairs(char:GetChildren()) do
-        if child:IsA("Tool") then hookTool(child) end
-    end
-    table.insert(characterConnections, char.ChildAdded:Connect(function(child)
-        if child:IsA("Tool") then hookTool(child) end
-    end))
-    table.insert(characterConnections, char.ChildRemoved:Connect(function(child)
-        if child == currentTool then currentTool = nil end
-    end))
-
-    -- Re-apply WalkSpeed & JumpPower on character spawn
-    task.wait(0.1)
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if hum then
-        hum.WalkSpeed = tbl.WalkSpeed
-        hum.JumpPower = tbl.JumpPower
-    end
-end
-
-LocalPlayer.CharacterAdded:Connect(onCharacterAdded)
-if LocalPlayer.Character then onCharacterAdded(LocalPlayer.Character) end
-
 -- ==========================================
--- 3. INFINITE SORU & WORKING WATER WALK
+-- 3. INFINITE SORU & CHARACTER STATS HANDLERS
 -- ==========================================
 
 _G.infiniteSoruEnabled = false
-local waterWalkEnabled = false
-local waterWalkConnection = nil
 
 local function setupInfiniteSoru()
     if not _G.infiniteSoruEnabled then return end
@@ -717,12 +691,59 @@ local function setupInfiniteSoru()
     end)
 end
 
-LocalPlayer.CharacterAdded:Connect(function(char)
-    task.wait(0.1)
-    if _G.infiniteSoruEnabled then
-        pcall(function() char:SetAttribute("FlashstepCooldown", 1) end)
+-- WalkSpeed & JumpPower Custom Functions
+local function applyCharacterStats(char)
+    if not char then return end
+    local humanoid = char:WaitForChild("Humanoid", 5)
+    if humanoid then
+        -- Apply WalkSpeed
+        if tbl.WalkSpeed then
+            humanoid.WalkSpeed = tbl.WalkSpeed
+            humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
+                if humanoid.WalkSpeed ~= tbl.WalkSpeed then
+                    humanoid.WalkSpeed = tbl.WalkSpeed
+                end
+            end)
+        end
+        -- Apply JumpPower
+        if tbl.JumpPower then
+            humanoid.JumpPower = tbl.JumpPower
+        end
     end
-end)
+end
+
+local function SetWalkSpeed(walkSpeed)
+    tbl.WalkSpeed = walkSpeed
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChild("Humanoid") then
+        char.Humanoid.WalkSpeed = tbl.WalkSpeed
+    end
+end
+
+local function SetJumpPower(jumpPower)
+    tbl.JumpPower = jumpPower
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChild("Humanoid") then
+        char.Humanoid.JumpPower = tbl.JumpPower
+    end
+end
+
+local function onCharacterAdded(char)
+    clearConnections()
+    applyCharacterStats(char)
+    for _, child in ipairs(char:GetChildren()) do
+        if child:IsA("Tool") then hookTool(child) end
+    end
+    table.insert(characterConnections, char.ChildAdded:Connect(function(child)
+        if child:IsA("Tool") then hookTool(child) end
+    end))
+    table.insert(characterConnections, char.ChildRemoved:Connect(function(child)
+        if child == currentTool then currentTool = nil end
+    end))
+end
+
+LocalPlayer.CharacterAdded:Connect(onCharacterAdded)
+if LocalPlayer.Character then onCharacterAdded(LocalPlayer.Character) end
 
 task.spawn(function()
     while true do
@@ -736,57 +757,8 @@ task.spawn(function()
     end
 end)
 
--- Robust Working Water Walk (CFrame Surface Float)
-local function ToggleWalkInWater(state)
-    waterWalkEnabled = state
-    if waterWalkConnection then
-        waterWalkConnection:Disconnect()
-        waterWalkConnection = nil
-    end
-
-    if waterWalkEnabled then
-        waterWalkConnection = RunService.Heartbeat:Connect(function()
-            local char = LocalPlayer.Character
-            if not char then return end
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if not hrp or not hum then return end
-
-            if hrp.Position.Y < 18 then
-                hrp.Velocity = Vector3.new(hrp.Velocity.X, math.max(hrp.Velocity.Y, 2), hrp.Velocity.Z)
-            end
-        end)
-    end
-end
-
 -- ==========================================
--- 4. MOVEMENT HANDLERS (WalkSpeed & JumpPower)
--- ==========================================
-
-local function SetWalkSpeed(value)
-    tbl.WalkSpeed = value
-    local char = LocalPlayer.Character
-    if char then
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if hum then
-            hum.WalkSpeed = value
-        end
-    end
-end
-
-local function SetJumpPower(value)
-    tbl.JumpPower = value
-    local char = LocalPlayer.Character
-    if char then
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if hum then
-            hum.JumpPower = value
-        end
-    end
-end
-
--- ==========================================
--- 5. COMPACT CENTUDOX V3 UI INTEGRATION
+-- 4. COMPACT CENTUDOX V3 UI INTEGRATION
 -- ==========================================
 
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
@@ -922,7 +894,7 @@ local function createTabPage(name)
     page.Size = UDim2.new(1, 0, 1, 0)
     page.BackgroundTransparency = 1
     page.BorderSizePixel = 0
-    page.CanvasSize = UDim2.new(0, 0, 0, 260)
+    page.CanvasSize = UDim2.new(0, 0, 0, 220)
     page.ScrollBarThickness = 2
     page.Visible = false
     page.Parent = ContentArea
@@ -1028,63 +1000,64 @@ local function makeButton(parent, text, callback)
     return b
 end
 
-local function makeSlider(parent, text, min, max, default, callback)
+-- Custom Slider Component Builder
+local function makeSlider(parent, text, minVal, maxVal, defaultVal, callback)
     local container = Instance.new("Frame")
     container.Size = UDim2.new(0, 155, 0, 42)
     container.BackgroundColor3 = PanelColor
+    container.BorderSizePixel = 0
     container.Parent = parent
     ApplyStyle(container, 5)
 
     local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, 0, 0, 18)
+    label.Size = UDim2.new(1, 0, 0, 20)
     label.BackgroundTransparency = 1
     label.Font = Enum.Font.GothamBold
-    label.Text = text .. ": " .. default
+    label.Text = text .. ": " .. defaultVal
     label.TextColor3 = Color3.fromRGB(200, 200, 205)
     label.TextSize = 10
     label.Parent = container
 
-    local sliderBar = Instance.new("TextButton")
-    sliderBar.Size = UDim2.new(1, -12, 0, 10)
-    sliderBar.Position = UDim2.new(0, 6, 0, 24)
-    sliderBar.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
-    sliderBar.Text = ""
-    sliderBar.AutoButtonColor = false
-    sliderBar.Parent = container
-    ApplyStyle(sliderBar, 3)
+    local sliderBg = Instance.new("Frame")
+    sliderBg.Size = UDim2.new(0.9, 0, 0, 6)
+    sliderBg.Position = UDim2.new(0.05, 0, 0, 26)
+    sliderBg.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
+    sliderBg.BorderSizePixel = 0
+    sliderBg.Parent = container
+    ApplyStyle(sliderBg, 3)
 
     local fill = Instance.new("Frame")
-    fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
+    fill.Size = UDim2.new((defaultVal - minVal) / (maxVal - minVal), 0, 1, 0)
     fill.BackgroundColor3 = ThemeColor
     fill.BorderSizePixel = 0
-    fill.Parent = sliderBar
+    fill.Parent = sliderBg
     ApplyStyle(fill, 3)
 
     local dragging = false
-    local function update(input)
-        local pos = math.clamp((input.Position.X - sliderBar.AbsolutePosition.X) / sliderBar.AbsoluteSize.X, 0, 1)
-        local val = math.floor(min + (max - min) * pos)
+    local function updateSlider(input)
+        local pos = math.clamp((input.Position.X - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X, 0, 1)
+        local val = math.floor(minVal + ((maxVal - minVal) * pos))
         fill.Size = UDim2.new(pos, 0, 1, 0)
         label.Text = text .. ": " .. val
         callback(val)
     end
 
-    sliderBar.InputBegan:Connect(function(input)
+    sliderBg.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
-            update(input)
+            updateSlider(input)
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            updateSlider(input)
         end
     end)
 
     UserInputService.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             dragging = false
-        end
-    end)
-
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            update(input)
         end
     end)
 
@@ -1127,8 +1100,13 @@ makeToggle(pages.Visuals, "Highlight Target", function(state)
     _G.G_ESP_Highlight = HighlightEnabled
 end)
 
-makeToggle(pages.Visuals, "Water Walk", function(state)
-    ToggleWalkInWater(state)
+-- Sliders for WalkSpeed and JumpPower added here
+makeSlider(pages.Visuals, "WalkSpeed", 16, 250, 16, function(value)
+    SetWalkSpeed(value)
+end)
+
+makeSlider(pages.Visuals, "JumpPower", 50, 300, 50, function(value)
+    SetJumpPower(value)
 end)
 
 makeToggle(pages.Visuals, "Spectate Target", function(state)
@@ -1142,14 +1120,6 @@ makeToggle(pages.Visuals, "Spectate Target", function(state)
     end
 end)
 
-makeSlider(pages.Visuals, "Walk Speed", 16, 300, 16, function(val)
-    SetWalkSpeed(val)
-end)
-
-makeSlider(pages.Visuals, "Jump Power", 50, 300, 50, function(val)
-    SetJumpPower(val)
-end)
-
 -- Populate Settings Tab
 makeToggle(pages.Settings, "Fruit Transform", function(state)
     getgenv().FruitTransform = state
@@ -1158,7 +1128,6 @@ end)
 makeButton(pages.Settings, "Unload Hub", function()
     DisableESP()
     stopRenderLoop()
-    ToggleWalkInWater(false)
     ScreenGui:Destroy()
 end)
 
@@ -1188,4 +1157,4 @@ end
 EnableDrag(MainFrame)
 EnableDrag(MiniIcon)
 
-print("Ash Client Hub (Movement Sliders & Water Walk) Successfully Loaded!")
+print("Ash Client Hub (WalkSpeed & JumpPower) Successfully Loaded!")
