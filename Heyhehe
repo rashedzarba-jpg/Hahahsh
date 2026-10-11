@@ -679,7 +679,7 @@ local function startAutoKenLoop()
 end
 
 -- ==========================================
--- 3. MOVEMENT & COMBAT MODULES (Soru, Water/Lava Walk, Air Jump, Fast Attack)
+-- 3. MOVEMENT & COMBAT MODULES
 -- ==========================================
 
 _G.infiniteSoruEnabled = false
@@ -734,7 +734,7 @@ local function SetJumpPower(jumpPower)
     end
 end
 
--- Water Walk (Surface Float)
+-- Water Walk
 local function ToggleWaterWalk(state)
     waterWalkEnabled = state
     if waterWalkConnection then waterWalkConnection:Disconnect() waterWalkConnection = nil end
@@ -796,7 +796,7 @@ local function ToggleInfiniteJump(state)
     end
 end
 
--- Fast Attack with Range Control
+-- Fixed Fast Attack using workspace enemy distance validation & remotes
 local function ToggleFastAttack(state)
     fastAttackEnabled = state
     if fastAttackConnection then fastAttackConnection:Disconnect() fastAttackConnection = nil end
@@ -804,27 +804,35 @@ local function ToggleFastAttack(state)
         fastAttackConnection = RunService.Heartbeat:Connect(function()
             pcall(function()
                 local char = LocalPlayer.Character
-                local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                if not char then return end
+                local hrp = char:FindFirstChild("HumanoidRootPart")
                 if not hrp then return end
 
-                -- Simulate regular click inputs to speed up attack animations if holding tool
                 local tool = char:FindFirstChildOfClass("Tool")
                 if tool then
-                    game:GetService("VirtualUser"):CaptureController()
-                    game:GetService("VirtualUser"):Button1Down(Vector2.new(0, 0))
+                    pcall(function()
+                        local vu = game:GetService("VirtualUser")
+                        vu:CaptureController()
+                        vu:Button1Down(Vector2.new(0,0))
+                    end)
                 end
 
-                -- Target check based on slider range
                 local enemiesFolder = workspace:FindFirstChild("Enemies")
                 if enemiesFolder then
                     for _, enemy in ipairs(enemiesFolder:GetChildren()) do
-                        local enemyHRP = enemy:FindFirstChild("HumanoidRootPart")
-                        local enemyHum = enemy:FindFirstChildOfClass("Humanoid")
-                        if enemyHRP and enemyHum and enemyHum.Health > 0 then
-                            local distance = (hrp.Position - enemyHRP.Position).Magnitude
-                            if distance <= tbl.FastAttackRange then
-                                -- Fire local hit registration event if available
-                                commE:FireServer("Hit", enemyHRP)
+                        if enemy:IsA("Model") and not enemy:GetAttribute("IsBoat") then
+                            local enemyHRP = enemy:FindFirstChild("HumanoidRootPart") or enemy.PrimaryPart
+                            local enemyHum = enemy:FindFirstChildOfClass("Humanoid")
+                            if enemyHRP and enemyHum and enemyHum.Health > 0 then
+                                local magnitude = (enemyHRP.Position - hrp.Position).Magnitude
+                                if magnitude <= tbl.FastAttackRange then
+                                    local registerHitRemote = ReplicatedStorage:FindFirstChild("RegisterHit", true)
+                                    if registerHitRemote and registerHitRemote:IsA("RemoteEvent") then
+                                        registerHitRemote:FireServer(enemyHRP, enemyHRP.Position)
+                                    else
+                                        commE:FireServer("Hit", enemyHRP)
+                                    end
+                                end
                             end
                         end
                     end
@@ -875,9 +883,9 @@ ScreenGui.IgnoreGuiInset = true
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = PlayerGui
 
-local ThemeColor = Color3.fromRGB(255, 110, 30)      -- Ash Accent Orange
-local BackgroundColor = Color3.fromRGB(12, 12, 15)   -- Deep Dark CentuDox Matte Black
-local SidebarColor = Color3.fromRGB(18, 18, 22)      -- Darker Contrast Panel
+local ThemeColor = Color3.fromRGB(255, 110, 30)      
+local BackgroundColor = Color3.fromRGB(12, 12, 15)   
+local SidebarColor = Color3.fromRGB(18, 18, 22)      
 local PanelColor = Color3.fromRGB(16, 16, 20)
 
 local function ApplyStyle(obj, radius)
@@ -892,7 +900,6 @@ local function ApplyStyle(obj, radius)
     corner.Parent = obj
 end
 
--- Compact Main Window Frame
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.Size = UDim2.new(0, 460, 0, 270)
@@ -902,7 +909,6 @@ MainFrame.BorderSizePixel = 0
 MainFrame.Parent = ScreenGui
 ApplyStyle(MainFrame, 8)
 
--- Top Bar Header
 local TopBar = Instance.new("Frame")
 TopBar.Name = "TopBar"
 TopBar.Size = UDim2.new(1, 0, 0, 30)
@@ -935,7 +941,6 @@ MinButton.TextColor3 = Color3.fromRGB(200, 200, 205)
 MinButton.TextSize = 14
 ApplyStyle(MinButton, 4)
 
--- Sidebar Navigation
 local Sidebar = Instance.new("Frame")
 Sidebar.Name = "Sidebar"
 Sidebar.Size = UDim2.new(0, 120, 1, -30)
@@ -961,7 +966,6 @@ UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 UIListLayout.Padding = UDim.new(0, 4)
 UIListLayout.Parent = TabContainer
 
--- Content Panel Area
 local ContentArea = Instance.new("Frame")
 ContentArea.Name = "ContentArea"
 ContentArea.Size = UDim2.new(1, -125, 1, -35)
@@ -969,7 +973,6 @@ ContentArea.Position = UDim2.new(0, 125, 0, 32)
 ContentArea.BackgroundTransparency = 1
 ContentArea.Parent = MainFrame
 
--- Minimize Floating Icon
 local MiniIcon = Instance.new("ImageButton")
 MiniIcon.Name = "MiniIcon"
 MiniIcon.Parent = ScreenGui
@@ -990,7 +993,6 @@ MiniIcon.MouseButton1Click:Connect(function()
     MainFrame.Visible = true
 end)
 
--- Create Tab Pages & Buttons
 local pages = {}
 local tabButtons = {}
 
@@ -1037,7 +1039,6 @@ local function createTabButton(name, order)
     return btn
 end
 
--- Initialize Tabs
 createTabPage("Combat")
 createTabPage("Visuals")
 createTabPage("Settings")
@@ -1067,7 +1068,6 @@ end
 
 switchTab("Combat")
 
--- Component Builders
 local function makeToggle(parent, text, callback)
     local b = Instance.new("TextButton")
     b.Size = UDim2.new(0, 155, 0, 32)
@@ -1169,7 +1169,7 @@ local function makeSlider(parent, text, minVal, maxVal, defaultVal, callback)
     return container
 end
 
--- Populate Combat Tab
+-- Combat Tab Elements
 makeToggle(pages.Combat, "Silent Aim", function(state)
     SilentAimPlayersEnabled = state
     UserWantsplayerAim = state
@@ -1184,7 +1184,6 @@ makeToggle(pages.Combat, "Fast Attack", function(state)
     ToggleFastAttack(state)
 end)
 
--- Fast Attack Range Slider placed right under Fast Attack in Combat Tab
 makeSlider(pages.Combat, "Attack Range", 10, 250, 50, function(value)
     tbl.FastAttackRange = value
 end)
@@ -1203,7 +1202,7 @@ makeButton(pages.Combat, "Skip Player", function()
     if getgenv().SkipPlayer then getgenv().SkipPlayer() end
 end)
 
--- Populate Visuals Tab
+-- Visuals Tab Elements
 makeToggle(pages.Visuals, "ESP Module", function(state)
     _G.G_ESPEnabled = state
     if _G.G_ESPEnabled then EnableESP() else DisableESP() end
@@ -1245,7 +1244,7 @@ makeToggle(pages.Visuals, "Spectate Target", function(state)
     end
 end)
 
--- Populate Settings Tab
+-- Settings Tab Elements
 makeToggle(pages.Settings, "Fruit Transform", function(state)
     getgenv().FruitTransform = state
 end)
@@ -1260,7 +1259,6 @@ makeButton(pages.Settings, "Unload Hub", function()
     ScreenGui:Destroy()
 end)
 
--- Enable Dragging on Main Frame and Mini Icon
 local function EnableDrag(frame)
     local dragging, dragStart, startPos
     frame.InputBegan:Connect(function(input)
@@ -1286,4 +1284,4 @@ end
 EnableDrag(MainFrame)
 EnableDrag(MiniIcon)
 
-print("Ash Client Hub (Fast Attack, Lava/Water Walk, Air Jump) Successfully Loaded!")
+print("Ash Client Hub (Fixed Fast Attack & Range Slider) Successfully Loaded!")
