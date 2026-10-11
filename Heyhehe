@@ -26,20 +26,21 @@ local Settings = {
     ClickDelay = 0.05,
 }
 
--- Environment references for fast attack
+-- Safe environment references
 local Player = LocalPlayer
-local Enemies = workspace:WaitForChild("Enemies", 99)
-local Characters = workspace:WaitForChild("Characters", 99)
-local Net = ReplicatedStorage:WaitForChild("Net", 99)
+local Net = ReplicatedStorage:WaitForChild("Net", 5)
 
--- Helper for Safe WaitForChild
 local function SafeWaitForChild(parent, name)
+    if not parent then return nil end
     local found = parent:FindFirstChild(name)
     if not found then
-        found = parent:WaitForChild(name, 99)
+        found = parent:WaitForChild(name, 5)
     end
     return found
 end
+
+local Enemies = workspace:WaitForChild("Enemies", 5)
+local Characters = workspace:WaitForChild("Characters", 5)
 
 local function getHRP()
     local char = LocalPlayer.Character
@@ -100,14 +101,6 @@ local function removeESP(player)
 end
 
 local function createESP(player)
-    if player:GetAttribute("IsAuthor") or 
-       player.Name == "Mas_Yes" or 
-       player.Name == "sjqgduf" or 
-       player.Name == "huha123444" or 
-       player.Name == "ksxrcm111" or
-       player.Name == "Dddyy5" then 
-        return 
-    end
     if player == LocalPlayer then return end
     local char = player.Character
     if not char then return end
@@ -132,166 +125,11 @@ local function createESP(player)
     text.Parent = billboard
     billboard.Parent = head
     
-    local highlight = nil
-    if _G.G_ESP_Highlight then
-        local hlColor = hexToColor3(_G.G_ESP_HighlightColor)
-        highlight = Instance.new("Highlight")
-        highlight.Name = "ESP_PlayerHighlight"
-        highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-        highlight.FillColor = hlColor
-        highlight.FillTransparency = 0.5
-        highlight.OutlineColor = hlColor
-        highlight.OutlineTransparency = 0
-        highlight.Parent = char
-    end
-    
     espObjects[player] = {
         gui = billboard,
         label = text,
         char = char,
-        highlight = highlight
     }
-end
-
-local function getPlayerData(player)
-    if not playerCache[player] then
-        playerCache[player] = {
-            level = "?",
-            fruit = "None",
-            bounty = 0,
-            team = "Unknown",
-            color = Color3.fromRGB(255, 255, 255),
-            lastUpdate = 0
-        }
-    end
-    local data = playerCache[player]
-    local now = tick()
-    if now - data.lastUpdate > 5 then
-        pcall(function() data.level = player.Data.Level.Value end)
-        pcall(function() data.fruit = player.Data.DevilFruit.Value end)
-        pcall(function() data.bounty = player.leaderstats["Bounty/Honor"].Value end)
-        data.team, data.color = getTeamInfo(player)
-        data.lastUpdate = now
-    end
-    return data
-end
-
-local function updateESP()
-    local now = tick()
-    if now - lastESPUpdate < ESP_UPDATE_INTERVAL then return end
-    lastESPUpdate = now
-    local myChar = LocalPlayer.Character
-    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
-    if not myRoot then return end
-    local myPos = myRoot.Position
-    
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer then
-            if player:GetAttribute("IsAuthor") or 
-               player.Name == "Mas_Yes" or 
-               player.Name == "sjqgdu6" or 
-               player.Name == "huha124444" or 
-               player.Name == "ksxrcn111" or
-               player.Name == "Dddyy5" then 
-                if espObjects[player] then
-                    removeESP(player)
-                end
-                continue 
-            end
-            local char = player.Character
-            local head = char and char:FindFirstChild("Head")
-            local data = espObjects[player]
-            if char and head then
-                if not data or data.char ~= char or not data.gui.Parent then
-                    removeESP(player)
-                    createESP(player)
-                    data = espObjects[player]
-                end
-            else
-                if data then
-                    removeESP(player)
-                end
-                continue
-            end
-            if not data then continue end
-            if char then
-                local hum = char:FindFirstChild("Humanoid")
-                local root = char:FindFirstChild("HumanoidRootPart")
-                if hum and root then
-                    local distance = math.floor((root.Position - myPos).Magnitude)
-                    local hp = math.floor((hum.Health / hum.MaxHealth) * 100)
-                    local pData = getPlayerData(player)
-                    local level = pData.level
-                    local fruit = pData.fruit
-                    local bounty = pData.bounty
-                    local team = pData.team
-                    local color = pData.color
-                    local warnTag = bounty > 10000000 and "⚠ " or ""
-                    local pvpState = "PVP Enabled "
-                    local pvpIcon = "🔴 "
-                    local isPvpDisabled = false
-                    
-                    if player:GetAttribute("PvpDisabled") == true then
-                        pvpState = "PvP Disabled "
-                        pvpIcon = "🟢 "
-                        isPvpDisabled = true
-                    end
-                    
-                    data.label.TextColor3 = color
-                    if data.label.TextSize ~= _G.G_ESP_TextSize then
-                        data.label.TextSize = _G.G_ESP_TextSize
-                    end
-                    
-                    local parts = {}
-                    if _G.G_ESP_Name then parts[#parts + 1] = warnTag .. "[" .. team .. "] <font color=\"rgb(255,255,0)\">" .. player.Name .. "</font>" end
-                    if _G.G_ESP_Level then parts[#parts + 1] = " [Lv." .. level .. "]" end
-                    if isPvpDisabled then
-                        parts[#parts + 1] = "\n<font color=\"rgb(0,255,0)\">" .. pvpIcon .. pvpState .. "</font>\n"
-                    else
-                        parts[#parts + 1] = "\n" .. pvpIcon .. pvpState .. "\n"
-                    end
-                    if _G.G_ESP_Fruit then parts[#parts + 1] = "Fruit: " .. fruit .. "\n" end
-                    if _G.G_ESP_Bounty then parts[#parts + 1] = "Bounty: " .. math.floor(bounty / 1000000) .. "M\n" end
-                    if _G.G_ESP_Distance then parts[#parts + 1] = distance .. "m | " end
-                    if _G.G_ESP_HP then parts[#parts + 1] = "HP " .. hp .. "%" end
-                    data.label.Text = table.concat(parts)
-            
-                    if _G.G_ESP_Highlight then
-                        local hlColor = hexToColor3(_G.G_ESP_HighlightColor)
-                        pcall(function()
-                            for _, child in ipairs(char:GetChildren()) do
-                                if child:IsA("Highlight") and child.Name ~= "ESP_PlayerHighlight" then
-                                    child.FillColor = hlColor
-                                    child.OutlineColor = hlColor
-                                    child.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                                end
-                            end
-                        end)
-                        if not data.highlight or not data.highlight.Parent then
-                            local hl = Instance.new("Highlight")
-                            hl.Name = "ESP_PlayerHighlight"
-                            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                            hl.FillColor = hlColor
-                            hl.FillTransparency = 0.5
-                            hl.OutlineColor = hlColor
-                            hl.OutlineTransparency = 0
-                            hl.Parent = char
-                            data.highlight = hl
-                        else
-                            data.highlight.FillColor = hlColor
-                            data.highlight.OutlineColor = hlColor
-                            data.highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                        end
-                    else
-                        if data.highlight then
-                            data.highlight:Destroy()
-                            data.highlight = nil
-                        end
-                    end
-                end
-            end
-        end
-    end
 end
 
 local function EnableESP()
@@ -302,7 +140,29 @@ local function EnableESP()
     end
     espUpdateConnection = task.spawn(function()
         while ESPRunning do
-            pcall(updateESP)
+            pcall(function()
+                local myChar = LocalPlayer.Character
+                local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+                if not myRoot then return end
+                local myPos = myRoot.Position
+                
+                for _, player in ipairs(Players:GetPlayers()) do
+                    if player ~= LocalPlayer then
+                        local char = player.Character
+                        local head = char and char:FindFirstChild("Head")
+                        local data = espObjects[player]
+                        if char and head then
+                            if not data or data.char ~= char or not data.gui.Parent then
+                                removeESP(player)
+                                createESP(player)
+                                data = espObjects[player]
+                            end
+                        else
+                            if data then removeESP(player) end
+                        end
+                    end
+                end
+            end)
             task.wait(ESP_UPDATE_INTERVAL)
         end
     end)
@@ -310,344 +170,17 @@ end
 
 local function DisableESP()
     ESPRunning = false
-    espUpdateConnection = nil
     for player, _ in pairs(espObjects) do
         removeESP(player)
     end
     espObjects = {}
 end
 
-if not _G.ESP_Initialized then
-    _G.ESP_Initialized = true
-    Players.PlayerRemoving:Connect(function(player)
-        removeESP(player)
-        playerCache[player] = nil
-    end)
-end
-
 -- ==========================================
--- 2. SILENT AIM MODULE & LOGIC
+-- 2. MOVEMENT & FAST ATTACK MODULE
 -- ==========================================
-
-local SilentAimModule = {}
-
-local successVSkill, VSkillModule = pcall(function()
-    return loadstring(game:HttpGet("https://raw.githubusercontent.com/jaanu91/Ip/refs/heads/main/Uo"))()
-end)
-if not successVSkill or type(VSkillModule) ~= "table" then
-    VSkillModule = { CheckVSkillUsage = function() end }
-end
-
-local commE = ReplicatedStorage:WaitForChild("Remotes", 99):WaitForChild("CommE", 99)
-local MouseModule = ReplicatedStorage:FindFirstChild("Mouse")
-
-local SilentAimPlayersEnabled = false
-local SilentAimNPCsEnabled = false
-local UserWantsplayerAim = false
-local UserWantsNPCAim = false
-local PredictionEnabled = false
-local HighlightEnabled = false 
-local AutoKen = false
-local ZSkillorM1 = false
-local autoKenRunning = false
-
-local renderConnection = nil
-local currentTool = nil
-local playersaimbot = nil
-local PlayersPosition = nil
-local NPCaimbot = nil
-local NPCPosition = nil
-local currentHighlight = nil
-local currentTargetType = nil
-local Selectedplayer = nil
 
 local characterConnections = {}
-local Skills = {"X"}
-local Booms = {"TAP"}
-local PredictionAmount = 0.1
-local maxRange = 1000
-
-local function getHRPModel(model)
-    if not model or not model:FindFirstChild("HumanoidRootPart") then return nil end
-    return model.HumanoidRootPart
-end
-
-local function clearConnections()
-    for _, conn in ipairs(characterConnections) do
-        pcall(function() conn:Disconnect() end)
-    end
-    characterConnections = {}
-end
-
-local function getPredictedPosition(hrp)
-    if not hrp then return nil end
-    local humanoid = hrp.Parent:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return hrp.Position end
-    if not PredictionEnabled or humanoid.WalkSpeed < 5 then return hrp.Position end
-    return hrp.Position + (hrp.Velocity * PredictionAmount)
-end
-
-local function isAllyWithMe(targetplayer)
-    local myGui = LocalPlayer:FindFirstChild("PlayerGui")
-    if not myGui then return false end
-
-    local scrolling = myGui:FindFirstChild("Main")
-        and myGui.Main:FindFirstChild("Allies")
-        and myGui.Main.Allies:FindFirstChild("Container")
-        and myGui.Main.Allies.Container:FindFirstChild("Allies")
-        and myGui.Main.Allies.Container.Allies:FindFirstChild("ScrollingFrame")
-
-    if scrolling then
-        for _, frame in pairs(scrolling:GetDescendants()) do
-            if frame:IsA("ImageButton") and frame.Name == targetplayer.Name then
-                return true
-            end
-        end
-    end
-    return false
-end
-
-local function isEnemy(targetplayer)
-    if not targetplayer or targetplayer == LocalPlayer then return false end
-    local myTeam = LocalPlayer.Team
-    local targetTeam = targetplayer.Team
-
-    if myTeam and targetTeam then
-        if myTeam.Name == "Pirates" and targetTeam.Name == "Marines" then return true end
-        if myTeam.Name == "Marines" and targetTeam.Name == "Pirates" then return true end
-        if myTeam.Name == "Pirates" and targetTeam.Name == "Pirates" then
-            if isAllyWithMe(targetplayer) then return false end
-            return true
-        end
-        if myTeam.Name == "Marines" and targetTeam.Name == "Marines" then return false end
-    end
-    return true
-end
-
-local function getClosestplayer(lpHRP)
-    if not lpHRP then return nil end
-    local closest = nil
-    local closestDist = math.huge
-    for _, pl in ipairs(Players:GetPlayers()) do
-        if pl ~= LocalPlayer and isEnemy(pl) and pl.Character and pl.Character.Parent ~= nil then
-            local hum = pl.Character:FindFirstChildWhichIsA("Humanoid")
-            local hrp = getHRPModel(pl.Character)
-            if hum and hum.Health > 0 and hrp then
-                local dist = (hrp.Position - lpHRP.Position).Magnitude
-                if dist <= maxRange and dist < closestDist then
-                    closestDist = dist
-                    closest = pl
-                end
-            end
-        end
-    end
-    return closest
-end
-
-local function getClosestNPC(lpHRP)
-    if not lpHRP then return nil end
-    local enemiesFolder = workspace:FindFirstChild("Enemies")
-    if not enemiesFolder then return nil end
-
-    local closest = nil
-    local closestDist = math.huge
-    for _, npc in ipairs(enemiesFolder:GetChildren()) do
-        if npc:IsA("Model") then
-            local hum = npc:FindFirstChildWhichIsA("Humanoid")
-            local hrp = getHRPModel(npc)
-            if hum and hum.Health > 0 and hrp then
-                local dist = (hrp.Position - lpHRP.Position).Magnitude
-                if dist <= maxRange and dist < closestDist then
-                    closestDist = dist
-                    closest = npc
-                end
-            end
-        end
-    end
-    return closest
-end
-
-local function applyHighlight(targetModel, targetType)
-    if not HighlightEnabled or not targetModel then return end
-    if currentHighlight and currentHighlight.Adornee == targetModel then return end
-
-    if currentHighlight then  
-        currentHighlight:Destroy()  
-        currentHighlight = nil  
-        currentTargetType = nil  
-    end  
-
-    local hl = Instance.new("Highlight")  
-    hl.FillColor = Color3.fromRGB(255, 140, 0)  
-    hl.OutlineColor = Color3.fromRGB(255, 255, 255)  
-    hl.FillTransparency = 0.5  
-    hl.OutlineTransparency = 0  
-    hl.Adornee = targetModel  
-    hl.Parent = targetModel  
-    currentHighlight = hl  
-    currentTargetType = targetType
-
-    pcall(function()
-        VSkillModule:CheckVSkillUsage(SilentAimModule)
-    end)
-end
-
-local function clearHighlight()
-    if currentHighlight then
-        currentHighlight:Destroy()
-        currentHighlight = nil
-        currentTargetType = nil
-    end
-end
-
-local function isSkillReadyForTool(toolName)
-    if not toolName then return false end
-    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
-    if not playerGui then return false end
-    local skillsFolder = playerGui:FindFirstChild("Main") and playerGui.Main:FindFirstChild("Skills")
-    if not skillsFolder then return false end
-    local toolFrame = skillsFolder:FindFirstChild(toolName)
-    if not toolFrame then return false end
-
-    for _, skillKey in ipairs({"Z", "X", "C", "V"}) do
-        local skill = toolFrame:FindFirstChild(skillKey)
-        if skill and skill:FindFirstChild("Cooldown") and skill.Cooldown:IsA("Frame") then
-            if skill.Cooldown.Size.X.Scale == 1.0 then
-                return true
-            end
-        end
-    end
-    return false
-end
-
-local function isNotDoughValidCondition()
-    return (currentTool and currentTool.Name == "Dough-Dough")
-end
-
-local function startRenderLoop()
-    if renderConnection then return end
-
-    renderConnection = RunService.RenderStepped:Connect(function()
-        local lpChar = LocalPlayer.Character
-        if not lpChar then return end
-        local lpHRP = lpChar:FindFirstChild("HumanoidRootPart")
-        if not lpHRP then return end
-
-        if not SilentAimPlayersEnabled and not SilentAimNPCsEnabled then return end
-
-        local targetModel = nil
-        local lookTargetPos = nil
-
-        if SilentAimPlayersEnabled then
-            local targetplayer = Selectedplayer or getClosestplayer(lpHRP)
-            if targetplayer and targetplayer ~= LocalPlayer and targetplayer.Character then
-                playersaimbot = targetplayer.Name
-                local hrp = getHRPModel(targetplayer.Character)
-                PlayersPosition = getPredictedPosition(hrp)
-                lookTargetPos = PlayersPosition
-                targetModel = targetplayer.Character
-                applyHighlight(targetModel, "player")
-            else
-                playersaimbot, PlayersPosition = nil, nil
-            end
-        elseif currentTargetType == "player" then
-            playersaimbot, PlayersPosition = nil, nil
-            clearHighlight()
-        end
-
-        if SilentAimNPCsEnabled then  
-            local closestNPC = getClosestNPC(lpHRP)  
-            if closestNPC then  
-                NPCaimbot = closestNPC.Name  
-                local hrp = getHRPModel(closestNPC)  
-                NPCPosition = getPredictedPosition(hrp)
-                lookTargetPos = NPCPosition
-                if not targetModel then  
-                    targetModel = closestNPC  
-                    applyHighlight(targetModel, "NPC")  
-                end  
-            else  
-                NPCaimbot, NPCPosition = nil, nil  
-            end
-        elseif currentTargetType == "NPC" then
-            NPCaimbot, NPCPosition = nil, nil  
-            clearHighlight()
-        end
-        
-        if currentTool and lookTargetPos and isSkillReadyForTool(currentTool.Name) and not isNotDoughValidCondition() then
-            local lookVector = (Vector3.new(lookTargetPos.X, lpHRP.Position.Y, lookTargetPos.Z) - lpHRP.Position).Unit
-            lpHRP.CFrame = CFrame.new(lpHRP.Position, lpHRP.Position + lookVector)
-        end
-    end)
-end
-
-local function stopRenderLoop()
-    if renderConnection then
-        renderConnection:Disconnect()
-        renderConnection = nil
-    end
-end
-
-local function hookTool(tool)
-    currentTool = tool
-    table.insert(characterConnections, tool.AncestryChanged:Connect(function(_, parent)
-        if not parent then
-            currentTool = nil
-        end
-    end))
-end
-
-local function HasTag(tagName)
-    local char = LocalPlayer.Character
-    if not char then return false end
-    local success, result = pcall(function()
-        return game:GetService("CollectionService"):HasTag(char, tagName)
-    end)
-    return success and result
-end
-
-local function startAutoKenLoop()
-    if autoKenRunning then return end
-    autoKenRunning = true
-
-    task.spawn(function()
-        while AutoKen do
-            task.wait(0.1)
-            if HasTag("Ken") then
-                local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
-                if playerGui then
-                    local kenButton = playerGui:FindFirstChild("MobileContextButtons")
-                        and playerGui.MobileContextButtons.ContextButtonFrame:FindFirstChild("BoundActionKen")
-                    if kenButton and kenButton:GetAttribute("Selected") ~= true then
-                        kenButton:SetAttribute("Selected", true)
-                    end
-                end
-
-                local observationManager = rawget(_G, "OM")
-                if observationManager and not observationManager.active then
-                    observationManager.radius = 0
-                    observationManager:setActive(true)
-                    commE:FireServer("Ken", true)
-                end
-            end
-        end
-        autoKenRunning = false
-    end)
-end
-
--- ==========================================
--- 3. MOVEMENT & INTEGRATED FAST ATTACK
--- ==========================================
-
-_G.infiniteSoruEnabled = false
-
-local function setupInfiniteSoru()
-    if not _G.infiniteSoruEnabled then return end
-    pcall(function()
-        local char = LocalPlayer.Character
-        if char then char:SetAttribute("FlashstepCooldown", 1) end
-    end)
-end
 
 local function applyCharacterStats(char)
     if not char then return end
@@ -655,11 +188,6 @@ local function applyCharacterStats(char)
     if humanoid then
         if tbl.WalkSpeed then
             humanoid.WalkSpeed = tbl.WalkSpeed
-            humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
-                if humanoid.WalkSpeed ~= tbl.WalkSpeed then
-                    humanoid.WalkSpeed = tbl.WalkSpeed
-                end
-            end)
         end
         if tbl.JumpPower then
             humanoid.JumpPower = tbl.JumpPower
@@ -683,7 +211,7 @@ local function SetJumpPower(jumpPower)
     end
 end
 
--- Walk on Water (Your Provided Logic)
+-- Walk on Water
 local waterPart = nil
 RunService.RenderStepped:Connect(function()
     local hrp = getHRP()
@@ -691,9 +219,11 @@ RunService.RenderStepped:Connect(function()
         if hrp.Position.Y >= 9.5 and hrp.Velocity.Y <= 0 then
             if not waterPart or not waterPart.Parent then
                 waterPart = Instance.new("Part", workspace)
-                waterPart.Name = "SacredPvPWater"; waterPart.Anchored = true
-                waterPart.CanCollide = true; waterPart.Transparency = 1
-                waterPart.Size = Vector3.new(20,1,20)
+                waterPart.Name = "SacredPvPWater"
+                waterPart.Anchored = true
+                waterPart.CanCollide = true
+                waterPart.Transparency = 1
+                waterPart.Size = Vector3.new(20, 1, 20)
             end
             waterPart.CFrame = CFrame.new(hrp.Position.X, 9.5, hrp.Position.Z)
         else
@@ -704,16 +234,15 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- Fast Attack Module (Your Provided Logic)
+-- Fast Attack Module
 local FastAttack = {
     Distance = 100,
     attackMobs = true,
     attackPlayers = true,
-    Equipped = nil
 }
 
-local RegisterAttack = SafeWaitForChild(Net, "RE/RegisterAttack")
-local RegisterHit = SafeWaitForChild(Net, "RE/RegisterHit")
+local RegisterAttack = Net and SafeWaitForChild(Net, "RE/RegisterAttack")
+local RegisterHit = Net and SafeWaitForChild(Net, "RE/RegisterHit")
 
 local function IsAlive(character)
     return character and character:FindFirstChild("Humanoid") and character.Humanoid.Health > 0
@@ -721,7 +250,8 @@ end
 
 local function ProcessEnemies(OthersEnemies, Folder)
     local BasePart = nil
-    for _, Enemy in Folder:GetChildren() do
+    if not Folder then return nil end
+    for _, Enemy in ipairs(Folder:GetChildren()) do
         local Head = Enemy:FindFirstChild("Head")
         if Head and IsAlive(Enemy) and Player:DistanceFromCharacter(Head.Position) < FastAttack.Distance then
             if Enemy ~= Player.Character then
@@ -734,15 +264,17 @@ local function ProcessEnemies(OthersEnemies, Folder)
 end
 
 function FastAttack:Attack(BasePart, OthersEnemies)
-    if not BasePart or #OthersEnemies == 0 then return end
-    RegisterAttack:FireServer(Settings.ClickDelay or 0)
-    RegisterHit:FireServer(BasePart, OthersEnemies)
+    if not BasePart or #OthersEnemies == 0 or not RegisterAttack or not RegisterHit then return end
+    pcall(function()
+        RegisterAttack:FireServer(Settings.ClickDelay or 0)
+        RegisterHit:FireServer(BasePart, OthersEnemies)
+    end)
 end
 
 function FastAttack:AttackNearest()
     local OthersEnemies = {}
-    local Part1 = ProcessEnemies(OthersEnemies, Enemies)
-    local Part2 = ProcessEnemies(OthersEnemies, Characters)
+    local Part1 = Enemies and ProcessEnemies(OthersEnemies, Enemies)
+    local Part2 = Characters and ProcessEnemies(OthersEnemies, Characters)
 
     local character = Player.Character
     if not character then return end
@@ -751,15 +283,15 @@ function FastAttack:AttackNearest()
     if equippedWeapon and equippedWeapon:FindFirstChild("LeftClickRemote") then
         for _, enemyData in ipairs(OthersEnemies) do
             local enemy = enemyData[1]
-            local direction = (enemy.HumanoidRootPart.Position - character:GetPivot().Position).Unit
-            pcall(function()
-                equippedWeapon.LeftClickRemote:FireServer(direction, 1)
-            end)
+            if enemy:FindFirstChild("HumanoidRootPart") then
+                local direction = (enemy.HumanoidRootPart.Position - character:GetPivot().Position).Unit
+                pcall(function()
+                    equippedWeapon.LeftClickRemote:FireServer(direction, 1)
+                end)
+            end
         end
     elseif #OthersEnemies > 0 then
         self:Attack(Part1 or Part2, OthersEnemies)
-    else
-        task.wait(0)
     end
 end
 
@@ -767,50 +299,29 @@ function FastAttack:BladeHits()
     local Equipped = IsAlive(Player.Character) and Player.Character:FindFirstChildOfClass("Tool")
     if Equipped and Equipped.ToolTip ~= "Gun" then
         self:AttackNearest()
-    else
-        task.wait(0)
     end
 end
-
-task.spawn(function()
-    while task.wait(Settings.ClickDelay) do
-        if Settings.AutoClick then
-            FastAttack:BladeHits()
-        end
-    end
-end)
-
-local function onCharacterAdded(char)
-    clearConnections()
-    applyCharacterStats(char)
-    for _, child in ipairs(char:GetChildren()) do
-        if child:IsA("Tool") then hookTool(child) end
-    end
-    table.insert(characterConnections, char.ChildAdded:Connect(function(child)
-        if child:IsA("Tool") then hookTool(child) end
-    end))
-    table.insert(characterConnections, char.ChildRemoved:Connect(function(child)
-        if child == currentTool then currentTool = nil end
-    end))
-end
-
-LocalPlayer.CharacterAdded:Connect(onCharacterAdded)
-if LocalPlayer.Character then onCharacterAdded(LocalPlayer.Character) end
 
 task.spawn(function()
     while true do
-        task.wait(0.1)
-        if _G.infiniteSoruEnabled then
+        task.wait(Settings.ClickDelay)
+        if Settings.AutoClick then
             pcall(function()
-                local char = LocalPlayer.Character
-                if char then char:SetAttribute("FlashstepCooldown", 1) end
+                FastAttack:BladeHits()
             end)
         end
     end
 end)
 
+LocalPlayer.CharacterAdded:Connect(function(char)
+    applyCharacterStats(char)
+end)
+if LocalPlayer.Character then
+    applyCharacterStats(LocalPlayer.Character)
+end
+
 -- ==========================================
--- 4. COMPACT CENTUDOX V3 UI INTEGRATION
+-- 3. UI INTEGRATION (CENTUDOX V3)
 -- ==========================================
 
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
@@ -1108,16 +619,6 @@ local function makeSlider(parent, text, minVal, maxVal, defaultVal, callback)
 end
 
 -- Combat Tab Elements
-makeToggle(pages.Combat, "Silent Aim", function(state)
-    SilentAimPlayersEnabled = state
-    UserWantsplayerAim = state
-    if SilentAimPlayersEnabled or SilentAimNPCsEnabled then
-        startRenderLoop()
-    else
-        stopRenderLoop()
-    end
-end)
-
 makeToggle(pages.Combat, "Fast Attack", function(state)
     Settings.AutoClick = state
 end)
@@ -1126,29 +627,10 @@ makeSlider(pages.Combat, "Attack Range", 10, 250, 100, function(value)
     FastAttack.Distance = value
 end)
 
-makeToggle(pages.Combat, "Inf Soru", function(state)
-    _G.infiniteSoruEnabled = state
-    setupInfiniteSoru()
-end)
-
-makeToggle(pages.Combat, "Auto Ken", function(state)
-    AutoKen = state
-    if AutoKen then startAutoKenLoop() end
-end)
-
-makeButton(pages.Combat, "Skip Player", function()
-    if getgenv().SkipPlayer then getgenv().SkipPlayer() end
-end)
-
 -- Visuals Tab Elements
 makeToggle(pages.Visuals, "ESP Module", function(state)
     _G.G_ESPEnabled = state
     if _G.G_ESPEnabled then EnableESP() else DisableESP() end
-end)
-
-makeToggle(pages.Visuals, "Highlight Target", function(state)
-    HighlightEnabled = state
-    _G.G_ESP_Highlight = HighlightEnabled
 end)
 
 makeSlider(pages.Visuals, "WalkSpeed", 16, 250, 16, function(value)
@@ -1163,25 +645,9 @@ makeToggle(pages.Visuals, "Water Walk", function(state)
     S.WalkWater = state
 end)
 
-makeToggle(pages.Visuals, "Spectate Target", function(state)
-    getgenv().SpectateTarget = state
-    if getgenv().SpectateTarget and getgenv().targ and getgenv().targ.Character then
-        Camera.CameraSubject = getgenv().targ.Character
-    else
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-            Camera.CameraSubject = LocalPlayer.Character.Humanoid
-        end
-    end
-end)
-
 -- Settings Tab Elements
-makeToggle(pages.Settings, "Fruit Transform", function(state)
-    getgenv().FruitTransform = state
-end)
-
 makeButton(pages.Settings, "Unload Hub", function()
     DisableESP()
-    stopRenderLoop()
     S.WalkWater = false
     Settings.AutoClick = false
     if waterPart then waterPart:Destroy() end
@@ -1213,4 +679,4 @@ end
 EnableDrag(MainFrame)
 EnableDrag(MiniIcon)
 
-print("Ash Client Hub (Custom Fast Attack & Water Part Walk) Successfully Loaded!")
+print("Ash Client Hub Successfully Loaded with Safe References!")
