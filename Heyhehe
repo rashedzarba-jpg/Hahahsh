@@ -1,5 +1,5 @@
 -- ============================================================================
--- Ash Client Integrated Hub (ESP, Silent Aim, UI, WalkSpeed, JumpPower, Soru)
+-- Ash Client Integrated Hub (ESP, Silent Aim, UI, WalkSpeed, JumpPower, Soru, WaterWalk, Dash)
 -- All Sources Are Public & Free - https://discord.gg/cSthtkp5dD
 -- ============================================================================
 
@@ -14,8 +14,13 @@ local Camera = workspace.CurrentCamera
 -- Global settings table for values
 local tbl = {
     WalkSpeed = 16,
-    JumpPower = 50
+    JumpPower = 50,
+    WalkWater = false,
+    DashEnabled = false,
+    DashLength = 1
 }
+
+local DashConnection = nil
 
 -- ==========================================
 -- 1. ESP CONFIGURATION & MODULE
@@ -728,6 +733,27 @@ local function SetJumpPower(jumpPower)
     end
 end
 
+-- WALK ON WATER LOGIC
+local waterPart = nil
+RunService.RenderStepped:Connect(function()
+    local hrp = getHRP(LocalPlayer.Character)
+    if tbl.WalkWater and hrp then
+        if hrp.Position.Y >= 9.5 and hrp.Velocity.Y <= 0 then
+            if not waterPart or not waterPart.Parent then
+                waterPart = Instance.new("Part", workspace)
+                waterPart.Name = "SacredPvPWater"; waterPart.Anchored = true
+                waterPart.CanCollide = true; waterPart.Transparency = 1
+                waterPart.Size = Vector3.new(20,1,20)
+            end
+            waterPart.CFrame = CFrame.new(hrp.Position.X, 9.5, hrp.Position.Z)
+        else
+            if waterPart then waterPart:Destroy(); waterPart = nil end
+        end
+    else
+        if waterPart then waterPart:Destroy(); waterPart = nil end
+    end
+end)
+
 local function onCharacterAdded(char)
     clearConnections()
     applyCharacterStats(char)
@@ -894,7 +920,7 @@ local function createTabPage(name)
     page.Size = UDim2.new(1, 0, 1, 0)
     page.BackgroundTransparency = 1
     page.BorderSizePixel = 0
-    page.CanvasSize = UDim2.new(0, 0, 0, 220)
+    page.CanvasSize = UDim2.new(0, 0, 0, 260)
     page.ScrollBarThickness = 2
     page.Visible = false
     page.Parent = ContentArea
@@ -1100,13 +1126,52 @@ makeToggle(pages.Visuals, "Highlight Target", function(state)
     _G.G_ESP_Highlight = HighlightEnabled
 end)
 
--- Sliders for WalkSpeed and JumpPower added here
+-- WalkSpeed, JumpPower & Movement Sliders
 makeSlider(pages.Visuals, "WalkSpeed", 16, 250, 16, function(value)
     SetWalkSpeed(value)
 end)
 
 makeSlider(pages.Visuals, "JumpPower", 50, 300, 50, function(value)
     SetJumpPower(value)
+end)
+
+makeToggle(pages.Visuals, "Walk On Water", function(state)
+    tbl.WalkWater = state
+end)
+
+makeToggle(pages.Visuals, "Dash Length", function(dashsh)
+    tbl.DashEnabled = dashsh
+    if dashsh then
+        if DashConnection then task.cancel(DashConnection) end
+
+        DashConnection = task.spawn(function()
+            while tbl.DashEnabled do
+                task.wait(0.1)
+                local character = LocalPlayer.Character
+                if character then
+                    local currentValue = character:GetAttribute("DashLength")
+                    if currentValue ~= tbl.DashLength then
+                        character:SetAttribute("DashLength", tbl.DashLength)
+                        character:SetAttribute("DashLengthAir", tbl.DashLength)
+                    end
+                end
+            end
+        end)
+    else
+        if DashConnection then
+            local character = LocalPlayer.Character
+            if character then
+                character:SetAttribute("DashLength", 1)
+                character:SetAttribute("DashLengthAir", 1)
+            end
+            task.cancel(DashConnection)
+            DashConnection = nil
+        end
+    end
+end)
+
+makeSlider(pages.Visuals, "Max Distance", 1, 300, 1, function(v)
+    tbl.DashLength = v
 end)
 
 makeToggle(pages.Visuals, "Spectate Target", function(state)
@@ -1157,4 +1222,4 @@ end
 EnableDrag(MainFrame)
 EnableDrag(MiniIcon)
 
-print("Ash Client Hub (WalkSpeed & JumpPower) Successfully Loaded!")
+print("Ash Client Hub (Water Walk & Dash Distance Added) Successfully Loaded!")
